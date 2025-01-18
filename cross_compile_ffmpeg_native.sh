@@ -2003,7 +2003,7 @@ build_ffmpeg() {
     #apply_patch file://$patch_dir/frei0r_load-shared-libraries-dynamically.diff
     local arch=x86_64
 
-    config_options="--cc=clang --cxx=clang++ --pkg-config=pkg-config --pkg-config-flags=--static --extra-version=ffmpeg-linux-build-helpers --enable-version3 --disable-debug --disable-w32threads"
+    config_options="--cc=clang --cxx=clang++ --pkg-config=pkg-config --pkg-config-flags=--static --extra-version=ffmpeg-build-helpers --enable-version3 --disable-debug --disable-w32threads"
     # just use locally packages for all the xcb stuff for now, you need to install them locally first...
     
     config_options+=" --enable-libvvenc"
@@ -2060,9 +2060,9 @@ build_ffmpeg() {
     
     if [[ $libvmaf_cuda == "y" ]]; then
     # should be fine even if paths are hard code
-      --extra-cflags="-I/usr/local/cuda/include/"
-      --extra-ldflags="-L/usr/local/cuda/lib64/"
-      --extra-ldflags="-L/usr/local/cuda/lib64/stubs/"
+      config_options+=" --extra-cflags=-I/usr/local/cuda/include/"
+      config_options+=" --extra-ldflags=-L/usr/local/cuda/lib64/"
+      config_options+=" --extra-ldflags=-L/usr/local/cuda/lib64/stubs/"
     fi
 
       if [[ $build_svt_hevc = y ]]; then
