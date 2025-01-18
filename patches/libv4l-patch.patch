@@ -1,0 +1,34 @@
+diff --git a/libv4l2/log.c b/libv4l2/log.c
+index 86d71b6..6f2432f 100644
+--- a/libv4l2/log.c
++++ b/libv4l2/log.c
+@@ -34,7 +34,6 @@ FILE *v4l2_log_file = NULL;
+ static const char *v4l2_ioctls[] = {
+        /* start v4l2 ioctls */
+        [_IOC_NR(VIDIOC_QUERYCAP)]         = "VIDIOC_QUERYCAP",
+-       [_IOC_NR(VIDIOC_RESERVED)]         = "VIDIOC_RESERVED",
+        [_IOC_NR(VIDIOC_ENUM_FMT)]         = "VIDIOC_ENUM_FMT",
+        [_IOC_NR(VIDIOC_G_FMT)]            = "VIDIOC_G_FMT",
+        [_IOC_NR(VIDIOC_S_FMT)]            = "VIDIOC_S_FMT",
+diff --git a/libv4lconvert/control/libv4lcontrol.c b/libv4lconvert/control/libv4lcontrol.c
+index 243f35d..94fa459 100644
+--- a/libv4lconvert/control/libv4lcontrol.c
++++ b/libv4lconvert/control/libv4lcontrol.c
+@@ -30,6 +30,8 @@
+ #include <unistd.h>
+ #include <string.h>
+ #include <pwd.h>
++#include <sys/sysmacros.h>
++#undef minor
+ #include "libv4lcontrol.h"
+ #include "libv4lcontrol-priv.h"
+ #include "../libv4lsyscall-priv.h"
+@@ -257,7 +259,7 @@ static void v4lcontrol_init_flags(struct v4lcontrol_data *data)
+     fclose(f);
+ 
+     if (s && sscanf(buf, "%*d:%d%c", &minor, &c) == 2 && c == '\n' &&
+-       minor == minor(st.st_rdev))
++       minor == gnu_dev_minor(st.st_rdev))
+       break;
+   }
+   if (i == 256)

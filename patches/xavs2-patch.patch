@@ -1,0 +1,48 @@
+diff --git a/build/linux/configure b/build/linux/configure
+index 1760c31..7941abe 100755
+--- a/build/linux/configure
++++ b/build/linux/configure
+@@ -954,7 +954,7 @@ ASFLAGS="$ASFLAGS -DSTACK_ALIGNMENT=$stack_alignment"
+ CPU_ENDIAN="little-endian"
+ if [ $compiler = GNU ]; then
+     echo "int i[2] = {0x42494745,0}; double f[2] = {0x1.0656e6469616ep+102,0};" > conftest.c
+-    $CC $CFLAGS conftest.c -c -o conftest.o 2>/dev/null || die "endian test failed"
++    $CC conftest.c -c -o conftest.o 2>/dev/null || die "endian test failed"
+     if (${cross_prefix}strings -a conftest.o | grep -q BIGE) && (${cross_prefix}strings -a conftest.o | grep -q FPendian) ; then
+         define WORDS_BIGENDIAN
+         CPU_ENDIAN="big-endian"
+diff --git a/source/encoder/encoder.c b/source/encoder/encoder.c
+index d5b3890..42ac9be 100644
+--- a/source/encoder/encoder.c
++++ b/source/encoder/encoder.c
+@@ -2038,7 +2038,7 @@ void *xavs2e_encode_one_frame(void *arg)
+ 
+     /* start AEC frame coding */
+     if (h->h_top->threadpool_aec != NULL && !h->param->enable_alf) {
+-        xavs2_threadpool_run(h->h_top->threadpool_aec, encoder_aec_encode_one_frame, h, 0);
++        // xavs2_threadpool_run(h->h_top->threadpool_aec, (xavs2_tfunc_t)encoder_aec_encode_one_frame, h, 0);
+     }
+ 
+     /* (3) encode all LCU rows in current frame ---------------------------
+@@ -2147,7 +2147,7 @@ void *xavs2e_encode_one_frame(void *arg)
+ #endif
+ 
+         if (h->h_top->threadpool_aec != NULL) {
+-            xavs2_threadpool_run(h->h_top->threadpool_aec, encoder_aec_encode_one_frame, h, 0);
++            xavs2_threadpool_run(h->h_top->threadpool_aec, (xavs2_tfunc_t)encoder_aec_encode_one_frame, h, 0);
+         }
+     }
+ 
+diff --git a/source/encoder/parameters.c b/source/encoder/parameters.c
+index 9adec5b..d14e564 100644
+--- a/source/encoder/parameters.c
++++ b/source/encoder/parameters.c
+@@ -528,7 +528,7 @@ char *copy_parameter(char *dst, const char *src)
+  *          : less than 2M bytes
+  * ---------------------------------------------------------------------------
+  */
+-static char *xavs2_get_configs(int argc, const char * const *argv)
++static char *xavs2_get_configs(int argc, char *argv[])
+ {
+     const int size_file_max = 1 << 20; // 1MB
+     char item[4096];

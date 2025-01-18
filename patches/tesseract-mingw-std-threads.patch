@@ -1,0 +1,26 @@
+diff --git a/src/training/unicharset/lstmtester.cpp b/src/training/unicharset/lstmtester.cpp
+index 052460cf..6006fe0d 100644
+--- a/src/training/unicharset/lstmtester.cpp
++++ b/src/training/unicharset/lstmtester.cpp
+@@ -17,7 +17,7 @@
+ 
+ #include "lstmtester.h"
+ #include <iomanip>  // for std::setprecision
+-#include <thread>   // for std::thread
++#include <mingw.thread.h>
+ #include "fileio.h" // for LoadFileLinesToStrings
+ 
+ namespace tesseract {
+diff --git a/src/viewer/svutil.cpp b/src/viewer/svutil.cpp
+index 3acce980..369a183b 100644
+--- a/src/viewer/svutil.cpp
++++ b/src/viewer/svutil.cpp
+@@ -32,7 +32,7 @@
+ #include <iostream>
+ #include <memory>
+ #include <string>
+-#include <thread> // for std::this_thread
++#include <mingw.thread.h> // for std::this_thread
+ #include <vector>
+ 
+ #ifdef _WIN32

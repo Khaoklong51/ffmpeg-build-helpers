@@ -1,6 +1,8 @@
 ffmpeg-windows-build-helpers
 ============================
 
+*Only native build work now
+
 This helper script lets you cross compile a windows-based 32 or 64-bit version of ffmpeg.exe/mplayer/mp4box.exe, etc,  including their dependencies and libraries that they use.
 Note that I do offer custom builds, price negotiable. Ping me at rogerdpack@gmail.com and we can negotiate, I'll do the work for you :) 
 
@@ -9,7 +11,6 @@ Building on native linux box might take less time overall.
 NB if you use WSL Ubuntu 20.04 you need to do an extra step: https://github.com/rdp/ffmpeg-windows-build-helpers/issues/452 or look in the "extra" directory for a script to do various builds on WSL.
 
 **Cross-compiling from a Linux environment:**
-
 Takes about 2 hours.
 
 Deploy a Linux VM on the host of your choice (>= 20.04 for Ubuntu), or natively on an extra computer or a dual boot system, or via a hosting provider such as Digital Ocean.  Cheapest way: install windows 10 wsl bash shell.  Another option: linux on a virtualbox VM.  Another option, typically fast: temporarily rent a box (ex: DigitalOcean or vultr).  
@@ -19,9 +20,9 @@ Download the script by cloning this repository via git:
     $ git clone https://github.com/rdp/ffmpeg-windows-build-helpers.git
     $ cd ffmpeg-windows-build-helpers
 
- Now run the script:
+ Now run the script for native build:
     
-    $ ./cross_compile_ffmpeg.sh
+    $ ./cross_compile_ffmpeg_native.sh
 
 Answer the prompts.
 It should end up with a working, statically-built ffmpeg.exe binary within the "`sandbox/*/ffmpeg_git`" director(ies).  You're done!
