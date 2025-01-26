@@ -2,6 +2,7 @@ ffmpeg-windows-build-helpers
 ============================
 
 *Only native build work now
+* required python3-mako python3-jinja2 libudev-dev
 
 This helper script lets you cross compile a windows-based 32 or 64-bit version of ffmpeg.exe/mplayer/mp4box.exe, etc,  including their dependencies and libraries that they use.
 Note that I do offer custom builds, price negotiable. Ping me at rogerdpack@gmail.com and we can negotiate, I'll do the work for you :) 

@@ -5,9 +5,6 @@
 
 source ./download_link.sh
 
-export CC=clang
-export CXX=clang++
-
 find_all_build_exes() {
   local found=""
 # NB that we're currently in the sandbox dir...
@@ -410,6 +407,9 @@ do_configure() {
     if [[ ! -f $configure_name && -f bootstrap.sh ]]; then # fftw wants to only run this if no configure :|
       ./bootstrap.sh
     fi
+    if [[ -f autogen.sh ]]; then #  libcdio need this ? 
+      ./autogen.sh
+    fi
     if [[ ! -f $configure_name ]]; then
       echo "running autoreconf to generate configure file for us..."
       autoreconf -fiv # a handful of them require this to create ./configure :|
@@ -480,7 +480,7 @@ do_cmake() {
     rm -f already_* # reset so that make will run again if option just changed
     local cur_dir2=$(pwd)
     echo doing cmake in $cur_dir2 with PATH=$mingw_bin_path:\$PATH with extra_args=$extra_args like this:
-    local command="$build_from_dir --fresh -G Ninja -B build -DBUILD_SHARED_LIBS=OFF -DCMAKE_BUILD_TYPE=Release -DENABLE_STATIC_RUNTIME=1 $mingw_w64_x86_64_prefix $extra_args"
+    local command="$build_from_dir --fresh -G Ninja -B build-sandbox -DBUILD_SHARED_LIBS=OFF -DCMAKE_BUILD_TYPE=Release -DENABLE_STATIC_RUNTIME=1 $extra_args"
     echo "doing ${cmake_command} $command"
     nice -n 5  ${cmake_command} $command || exit 1
     touch $touch_name || exit 1
@@ -503,7 +503,7 @@ do_meson() {
     local configure_options="$1 --unity=off"
     local configure_name="$2"
     if [[ -z $configure_name ]]; then
-      local configure_name="meson setup build"
+      local configure_name="meson setup build-sandbox"
     fi
     local configure_env="$3"
     local configure_noclean=""
@@ -516,6 +516,7 @@ do_meson() {
             make clean # just in case
         fi
         rm -f already_* # reset
+        rm -rf build-sandbox # reset
         echo "Using meson: $english_name ($PWD) as $ PATH=$PATH ${configure_env} $configure_name $configure_options $meson_config"
         #env
         $configure_name $configure_options $meson_config || exit 1
@@ -542,8 +543,8 @@ do_ninja_and_ninja_install() {
     do_ninja "$extra_ninja_options"
     local touch_name=$(get_small_touchfile_name already_ran_ninja_install "$extra_ninja_options")
     if [ ! -f $touch_name ]; then
-        echo "ninja installing $(pwd) as $PATH=$PATH ninja -C build install $extra_make_options"
-        ninja -C build install || exit 1
+        echo "ninja installing $(pwd) as $PATH=$PATH ninja -C build-sandbox install $extra_make_options"
+        ninja -C build-sandbox install || exit 1
         touch $touch_name || exit 1
     fi
 }
@@ -554,12 +555,58 @@ do_ninja() {
   local touch_name=$(get_small_touchfile_name already_ran_ninja "${extra_make_options}")
 
   if [ ! -f $touch_name ]; then
-    echo "ninja-ing $cur_dir2 as $ PATH=$PATH ninja -C build "${extra_make_options}""
-    ninja -C build $extra_make_options || exit 1
+    echo "ninja-ing $cur_dir2 as $ PATH=$PATH ninja -C build-sandbox "${extra_make_options}""
+    ninja -C build-sandbox $extra_make_options || exit 1
     touch $touch_name || exit 1 # only touch if the build was OK
   else
     echo "already did ninja $(basename "$cur_dir2")"
   fi
+}
+
+do_cargo() {
+  local build_type=$1
+  local extra_cargo_option="$2 --release"
+  local cur_dir2=$(pwd)
+  local touch_name=$(get_small_touchfile_name already_ran_cargo "${extra_cargo_option}")
+
+  if [[ -z $build_type ]]; then
+    build_type="build"
+  fi  # Closing the missing 'if' block
+
+  if [ ! -f "$touch_name" ]; then
+    cargo clean
+    local cargo_command="cargo $build_type $extra_cargo_option"
+    echo "cargo compiling $cur_dir2 as PATH=$PATH $cargo_command"
+    $cargo_command || exit 1
+    touch "$touch_name"
+  else
+    echo "already done cargo build $(basename "$cur_dir2")"
+  fi
+}
+
+do_cargo_install() {
+  local install_type=$1
+  local extra_cargo_option="$2 --root=$mingw_w64_x86_64_prefix"
+  local cur_dir2=$(pwd)
+  local touch_name=$(get_small_touchfile_name already_ran_cargo_install "${extra_cargo_option}")
+
+  if [[ -z $install_type ]]; then
+    install_type="install"
+  fi
+
+  if [ ! -f "$touch_name" ]; then
+    local cargo_command="cargo $install_type $extra_cargo_option"
+    echo "cargo install $cur_dir2 as PATH=$PATH $cargo_command"
+    $cargo_command || exit 1
+    touch "$touch_name"
+  else
+    echo "already done cargo install $(basename "$cur_dir2")"
+  fi
+}
+
+do_cargo_and_cargo_install() {
+  do_cargo "$1"
+  do_cargo_install "$2"
 }
 
 apply_patch() {
@@ -569,13 +616,18 @@ apply_patch() {
   if [[ -z $patch_type ]]; then
     patch_type="-p0" # some are -p1 unfortunately, git's default
   fi
-  local patch_name=$(basename $url)
+  local patch_name=$(basename "$url")
   local patch_done_name="$patch_name.done"
   if [[ ! -e $patch_done_name ]]; then
     if [[ -f $patch_name ]]; then
       rm $patch_name || exit 1 # remove old version in case it has been since updated on the server...
     fi
-    curl -4 --retry 5 $url -O --fail || echo_and_exit "unable to download patch file $url"
+
+    local curl_command="curl -4 --retry 5 $url -O --fail"
+    echo "doing curl: $curl_command"
+    
+    $curl_command || echo_and_exit "unable to download patch file $url"
+    
     echo "applying patch $patch_name"
     if [[ -z $not_git ]]; then
       git apply $patch_type < "$patch_name" || exit 1
@@ -583,12 +635,9 @@ apply_patch() {
       patch $patch_type < "$patch_name" || exit 1
     fi
     touch $patch_done_name || exit 1
-    # too crazy, you can't do do_configure then apply a patch?
-    # rm -f already_ran* # if it's a new patch, reset everything too, in case it's really really really new
-  #else
-  #  echo "patch $patch_name already applied" # too chatty
   fi
 }
+
 
 echo_and_exit() {
   echo "failure, exiting: $1"
@@ -729,8 +778,10 @@ build_xorgproto() {
 }
 
 build_libx11() {
+  export CFLAGS="$CFLAGS -fPIC"
   do_git_checkout_and_make_install $libX11_git
   sed -i.bak "s|-lX11.*|-lX11 -lxcb -lXau|" "${mingw_w64_x86_64_prefix}/lib/pkgconfig/x11.pc"
+  reset_cflags
 }
 
 build_libxtrans() {
@@ -738,8 +789,10 @@ build_libxtrans() {
 }
 
 build_libxcb() {
+  export CFLAGS="$CFLAGS -fPIC"
   do_git_checkout_and_make_install $libxcb_git
   sed -i.bak "s|-lxcb.*|-lxcb -lXau|" "${mingw_w64_x86_64_prefix}/lib/pkgconfig/xcb.pc"
+  reset_cflags
 }
 
 build_xcbproto() {
@@ -761,8 +814,10 @@ build_libxext() {
   build_libxcb
   cp $mingw_w64_x86_64_prefix/share/pkgconfig/* $mingw_w64_x86_64_prefix/lib/pkgconfig/
   build_libx11
+  export CFLAGS="$CFLAGS -fPIC"
   do_git_checkout_and_make_install $libxext_git
   unset ACLOCAL_PATH
+  reset_cflags
 }
 
 build_sdl2() {
@@ -914,14 +969,10 @@ build_libtesseract() {
   do_git_checkout $tesseract_git tesseract-git
   cd tesseract-git
     export LDFLAGS="-lsharpyuv"
-    export CC=gcc
-    export CXX=g++
     generic_configure "--enable-shared=no --disable-doc --with-curl=no"
     do_make_and_make_install
     sed -i.bak 's/-ltesseract.*$/-ltesseract -lstdc++ -llzma -ljpeg -lz -lgomp/' "${mingw_w64_x86_64_prefix}/lib/pkgconfig//tesseract.pc" # see above, gomp for linux native
     unset LDFLAGS
-    export CC=clang
-    export CXX=clang++
   cd ..
 }
 
@@ -939,7 +990,16 @@ build_libopenjpeg() {
   cd ..
 }
 
+build_rust_bindgen() {
+  do_git_checkout $BINDGEN_URL rust-bindgen-git
+  cd rust-bindgen-git
+    do_cargo_install "install bindgen-cli"
+  cd ..
+}
+
 build_glew() {
+  build_libglslang
+  build_libglvnd
   download_and_unpack_file $glew_tgz glew-2.2.0
   cd glew-2.2.0/build/cmake
     local cmake_params="-DBUILD_UTILS=OFF"
@@ -1168,9 +1228,10 @@ build_libvmaf() {
     unset CXXFLAGS
     unset LDFLAGS
     rm -f ${mingw_w64_x86_64_prefix}/lib/libvmaf.so
+    # TODO: better patch pc file
     sed -i.bak "s/Libs: .*/& -lstdc++/" "${mingw_w64_x86_64_prefix}/lib/pkgconfig/libvmaf.pc" # .pc is still broken
-    export CC=clang
-    export CXX=clang++
+    unset CC
+    unset CXX
   cd ../..
 }
 
@@ -1220,7 +1281,7 @@ build_libnettle() {
   cd ..
 }
 
-build_unistring() {
+build_libunistring() {
   generic_download_and_make_and_install $libunistring_tar
 }
 
@@ -1253,16 +1314,17 @@ build_libogg() {
 build_libvorbis() {
   do_git_checkout $libvorbis_git vorbis-git
   cd vorbis-git
+    export CPPFLAGS="$CPPFLAGS -fpic"
     generic_configure "--disable-docs --disable-examples --disable-oggtest"
     do_make_and_make_install
+    reset_cppflags
   cd ..
 }
 
 build_libopus() {
-  do_git_checkout $libopus_git opus-git origin/main
+  do_git_checkout $libopus_git opus-git
   cd opus-git
-    generic_configure "--disable-doc --disable-extra-programs --disable-stack-protector"
-    do_make_and_make_install
+    do_cmake_and_install
   cd ..
 }
 
@@ -1297,6 +1359,7 @@ build_libtheora() {
 build_libsndfile() {
   do_git_checkout $libsndfile_git libsndfile-git
   cd libsndfile-git
+    export LDFLAGS="-lm"
     generic_configure "--disable-sqlite --disable-external-libs --disable-full-suite"
     do_make_and_make_install
     if [ "$1" = "install-libgsm" ]; then
@@ -1307,20 +1370,24 @@ build_libsndfile() {
         echo "already installed GSM 6.10 ..."
       fi
     fi
+    unset LDFLAGS
   cd ..
 }
 
 build_mpg123() {
   do_svn_checkout $mpg123_svn mpg123-svn # avoid Think again failure
   cd mpg123-svn
+    export CPPFLAGS="$CPPFLAGS -fpic"
     generic_configure
     do_make_and_make_install
+    reset_cppflags
   cd ..
 }
 
-build_lame() {
+build_mp3lame() {
   do_svn_checkout $lame_svn lame-svn
   cd lame-svn
+    apply_patch file://$patch_dir/mp3lame.patch "" "patch"
     generic_configure "--enable-nasm --enable-shared=no --disable-frontend"
     do_make_and_make_install
   cd ..
@@ -1673,11 +1740,9 @@ build_fribidi() {
 build_libsrt() {
   do_git_checkout $srt_git srt-git # might be able to use these days...?
   cd srt-git
-    # CMake Warning at CMakeLists.txt:893 (message):
-    #   On MinGW, some C++11 apps are blocked due to lacking proper C++11 headers
-    #   for <thread>.  FIX IF POSSIBLE.
-    do_cmake "-DUSE_GNUTLS=ON -DENABLE_SHARED=OFF -DENABLE_CXX11=OFF"
+    do_cmake "-DUSE_GNUTLS=ON -DENABLE_SHARED=OFF -DUSE_STATIC_LIBSTDCXX=ON -DOPENSSL_USE_STATIC_LIBS=ON -DENABLE_APPS=OFF"
     do_ninja_and_ninja_install
+    sed -i.bak "s|"
   cd ..
 }
 
@@ -1700,26 +1765,15 @@ build_libaribcaption() {
   cd ..
 }
 
-build_libxavs() {
-  do_svn_checkout $libxavs_svn xavs-svn
-  cd xavs-svn
-    if [[ ! -f Makefile.bak ]]; then
-      sed -i.bak "s/O4/O2/" configure # Change CFLAGS.
-    fi
-    do_configure "--host=$host_target --prefix=$mingw_w64_x86_64_prefix --cross-prefix=$cross_prefix" # see https://github.com/rdp/ffmpeg-windows-build-helpers/issues/3
-    do_make_and_make_install "$make_prefix_options"
-    rm -f NUL # cygwin causes windows explorer to not be able to delete this folder if it has this oddly named file in it...
-  cd ..
-}
-
 build_libxavs2() {
   do_git_checkout $libxavs2_git xavs2-git
   cd xavs2-git
+    export CFLAGS="$CFLAGS -Wno-error=incompatible-pointer-types" # gcc-14 thing don't know how to fix
     apply_patch file://$patch_dir/xavs2-patch.patch -p1
-    #apply_patch file://$patch_dir/xavs2-patch-1.patch -p1
     cd build/linux
       do_configure "--cross-prefix=$cross_prefix --host=$host_target --prefix=$mingw_w64_x86_64_prefix --enable-pic" ""
       do_make_and_make_install
+    reset_cflags
   cd ../../..
 }
 
@@ -1775,8 +1829,8 @@ build_dav1d() {
     local meson_options="--prefix=${mingw_w64_x86_64_prefix} --libdir=${mingw_w64_x86_64_prefix}/lib --buildtype=release --default-library=static"
     do_meson "$meson_options"
     do_ninja_and_ninja_install
-    cp build/src/libdav1d.a $mingw_w64_x86_64_prefix/lib || exit 1 # avoid 'run ranlib' weird failure, possibly older meson's https://github.com/mesonbuild/meson/issues/4138 :|
-    cpu_count=$original_cpu_count
+    #cp build/src/libdav1d.a $mingw_w64_x86_64_prefix/lib || exit 1 # avoid 'run ranlib' weird failure, possibly older meson's https://github.com/mesonbuild/meson/issues/4138 :|
+    #cpu_count=$original_cpu_count
   cd ..
 }
 
@@ -1797,14 +1851,14 @@ build_libx265() {
   # Apply x86 noasm detection fix on newer versions
   apply_patch "file://$patch_dir/x265_x86_noasm_fix.patch" -p1
 
-  mkdir -p 8bit/build 10bit 12bit
+  mkdir -p 8bit/build-sandbox 10bit 12bit
   
   # Build 12bit (main12)
   cd 12bit
   local cmake_12bit_params="$cmake_params -DENABLE_CLI=OFF -DHIGH_BIT_DEPTH=ON -DMAIN12=ON -DEXPORT_C_API=OFF"
   do_cmake_from_build_dir ../source "$cmake_12bit_params"
   do_ninja
-  cp build/libx265.a ../8bit/build/libx265_main12.a
+  cp build-sandbox/libx265.a ../8bit/build-sandbox/libx265_main12.a
   cd ..
 
   # Build 10bit (main10)
@@ -1812,7 +1866,7 @@ build_libx265() {
   local cmake_10bit_params="$cmake_params -DENABLE_CLI=OFF -DHIGH_BIT_DEPTH=ON -DENABLE_HDR10_PLUS=ON -DEXPORT_C_API=OFF"
   do_cmake_from_build_dir ../source "$cmake_10bit_params"
   do_ninja
-  cp build/libx265.a ../8bit/build/libx265_main10.a
+  cp build-sandbox/libx265.a ../8bit/build-sandbox/libx265_main10.a
   cd ..
 
   # Build 8 bit (main) with linked 10 and 12 bit then install
@@ -1821,9 +1875,9 @@ build_libx265() {
   cmake_params+=" -DEXTRA_LIB=libx265_main10.a;libx265_main12.a"
   do_cmake_from_build_dir ../source "$cmake_params"
   do_ninja_and_ninja_install
-  cp build/libx265_main10.a "${mingw_w64_x86_64_prefix}/lib"
-  cp build/libx265_main12.a "${mingw_w64_x86_64_prefix}/lib"
-  sed -i.bak "s|-lx265.*|-lx265 -lx265_main10 -lx265_main12|" "${mingw_w64_x86_64_prefix}/lib/pkgconfig/x265.pc"
+  cp build-sandbox/libx265_main10.a "${mingw_w64_x86_64_prefix}/lib"
+  cp build-sandbox/libx265_main12.a "${mingw_w64_x86_64_prefix}/lib"
+  sed -i.bak "s|-lx265.*|-lx265 -lx265_main10 -lx265_main12 -static-libgcc|" "${mingw_w64_x86_64_prefix}/lib/pkgconfig/x265.pc"
   cd ../..
 }
 
@@ -1877,7 +1931,7 @@ build_libdvdread() {
     # XXXX better CFLAGS here...
     generic_configure "CFLAGS=-DHAVE_DVDCSS_DVDCSS_H LDFLAGS=-ldvdcss --enable-dlfcn" # vlc patch: "--enable-libdvdcss" # XXX ask how I'm *supposed* to do this to the dvdread peeps [svn?]
     do_make_and_make_install
-    sed -i.bak 's/-ldvdread.*/-ldvdread -ldvdcss/' "$PKG_CONFIG_PATH/dvdread.pc"
+    sed -i.bak 's/-ldvdread.*/-ldvdread -ldvdcss/' "${mingw_w64_x86_64_prefix}/lib/pkgconfig/dvdread.pc"
   cd ..
 }
 
@@ -1893,63 +1947,168 @@ build_libhdhomerun() {
   cd ..
 }
 
+build_flac() {
+  do_git_checkout $FLAC_URL flac-git
+  cd flac-git
+    do_cmake_and_install "-DBUILD_DOCS=OFF -DINSTALL_MANPAGES=OFF"
+  cd ..
+}
+
+build_libglslang() {
+  do_git_checkout $LIBGLSLANG_URL libglslang-git
+  cd libglslang-git
+   ./update_glslang_sources.py
+   do_cmake_and_install
+  cd ..
+}
+
+build_omx() {
+  do_git_checkout $OMX_URL omx-git
+  cd omx-git
+    # TODO: better implementation of this
+    apply_patch file://$patch_dir/omx-patch.patch -p1 "patch" # fix -Werror default
+    generic_configure "--disable-doc"
+    make clean
+    make -j $cpu_count
+    make -j $cpu_count
+    do_make_install
+  cd ..
+}
+
+build_openal() {
+  do_git_checkout $OPENAL_URL openal-soft-git
+  cd openal-soft-git
+    do_cmake_and_install "-DALSOFT_STATIC_LIBGCC=ON -DALSOFT_STATIC_STDCXX=OFF -DLIBTYPE=STATIC"
+  cd ..
+}
+
+build_libcap() {
+  do_git_checkout $LIBCAP_URL libcap-git
+  cd libcap-git
+    do_make_and_make_install "prefix=$mingw_w64_x86_64_prefix"
+    ln -s "${mingw_w64_x86_64_prefix}/lib64/pkgconfig/libcap.pc" "${mingw_w64_x86_64_prefix}/lib/pkgconfig"
+    ln -s "${mingw_w64_x86_64_prefix}/lib64/pkgconfig/libpsx.pc" "${mingw_w64_x86_64_prefix}/lib/pkgconfig"
+    rm -f "${mingw_w64_x86_64_prefix}/lib64/*.so.*"
+  cd ..
+}
+
+buid_util_linux() {
+  do_git_checkout $UTIL_LINUX_URL util-linux-git
+  cd util-linux-git
+    do_meson "-Dbuild-libmount=enabled"
+    do_ninja_and_ninja_install
+  cd ..
+}
+
+build_glu() {
+  do_git_checkout $GLU_URL "glu-git" "debian-unstable"
+  cd glu-git
+    generic_configure_make_install
+  cd ..
+}
+
+build_libglvnd() {
+  do_git_checkout $LIBGLVND_URL libglvnd-git
+  cd libglvnd-git
+    do_meson
+    do_ninja_and_ninja_install
+  cd ..
+}
+
+build_libatomic_ops() {
+  do_git_checkout $LIPATOMIC_OPS_URL libatomic-ops-git
+  cd libatomic-ops-git
+    do_cmake_and_install
+  cd ..
+}
+
+build_libpciaccess() {
+  do_git_checkout $LIBPCIACCESS_URL libpciaccess-git
+  cd libpciaccess-git
+    do_meson
+    do_ninja_and_ninja_install
+  cd ..
+}
+
+build_libdrm() {
+  build_libatomic_ops
+  build_libpciaccess
+  do_git_checkout $LIBDRM_URL libdrm-git
+  cd libdrm-git
+    do_meson "-Dintel=enabled -Dradeon=enabled -Damdgpu=enabled -Dnouveau=enabled -Dvmwgfx=enabled -Dtests=false"
+    do_ninja_and_ninja_install
+  cd ..
+}
+
+build_vdpau() {
+  do_git_checkout $VDAPU_URL vdapu-git
+  cd vdapu-git
+    do_meson
+    do_ninja_and_ninja_install
+  cd ..
+}
+
+build_libva() {
+  build_libdrm
+  do_git_checkout_and_make_install $LIBVA_URL libav-git
+}
+
+build_opengl() {
+  build_mesa
+  do_git_checkout $OPENGL_URL opengl-git
+  cd opengl-git
+    do_meson "-Dx11=enabled -Dasm=enabled -Degl=true -Dglx=enabled"
+    do_ninja_and_ninja_install
+  cd ..
+}
+
+build_opencl() {
+  build_glu
+  #build_systemd # build for udev but broken install libudev-dev instead
+  do_git_checkout $OPENCL_HEADER_URL opencl-git
+  cd opencl-git
+    do_cmake "-DBUILD_TESTING=OFF -DBUILD_DOCS=OFF -DBUILD_EXAMPLES=OFF -DOPENCL_SDK_BUILD_SAMPLES=OFF -DOPENCL_SDK_BUILD_SAMPLES=OFF"
+    do_ninja_and_ninja_install
+  cd ..
+}
+
+build_libvpl() {
+  do_git_checkout $LIBVPL_URL libvpl-git
+  cd libvpl-git
+    do_cmake "-DBUILD_SHARED_LIBS=OFF"
+    do_ninja_and_ninja_install
+  cd ..
+}
+
+build_vulkan_header() {
+  do_git_checkout $VULKAN_HEADER_URL vulkan-header-git
+  cd vulkan-header-git
+    do_cmake_and_install
+  cd ..
+}
+
+build_vulkan_loader() {
+  build_vulkan_header
+  do_git_checkout $VULKAN_LOADER_URL vulkan-Loader-git
+  cd vulkan-Loader-git
+    do_cmake ""
+    do_ninja_and_ninja_install
+  cd ..
+}
+
+build_libcdio() {
+  do_git_checkout $LIBCDIO_URL libcdio-git
+  cd libcdio-git
+    generic_configure "--enable-year2038 --enable-vcd-info  --disable-rpath"
+  cd ..
+}
+
 reset_cflags() {
   export CFLAGS=$original_cflags
 }
 
 reset_cppflags() {
   export CPPFLAGS=$original_cppflags
-}
-
-build_meson_cross() {
-  local cpu_family="x86_64"
-  rm -fv meson-cross.mingw.txt
-  cat >> meson-cross.mingw.txt << EOF
-[binaries]
-c = '${cross_prefix}gcc'
-cpp = '${cross_prefix}g++'
-ld = '${cross_prefix}ld'
-ar = '${cross_prefix}ar'
-strip = '${cross_prefix}strip'
-pkgconfig = '${cross_prefix}pkg-config'
-nm = '${cross_prefix}nm'
-windres = '${cross_prefix}windres'
-
-[host_machine]
-system = 'windows'
-cpu_family = '$cpu_family'
-cpu = '$cpu_family'
-endian = 'little'
-EOF
-  mv -v meson-cross.mingw.txt ../..
-}
-
-get_local_meson_cross_with_propeties() {
-  local local_dir="$1"
-  local c_args=
-  local cpp_args=
-  local link_args=
-  if [[ -z $local_dir ]]; then
-    local_dir="."
-  fi
-  cp ${top_dir}/meson-cross.mingw.txt "$local_dir"
-  if [[ -n "$CFLAGS" ]]; then
-    c_args="'$(echo ${CFLAGS} | sed "s/ /\',\'/g")'"
-  fi
-  if [[ -n "$CXXFLAGS" ]]; then
-    cpp_args="'$(echo ${CXXFLAGS} | sed "s/ /\',\'/g")'"
-  fi
-  if [[ -n "$LDFLAGS" ]]; then
-    link_args="'$(echo ${LDFLAGS} | sed "s/ /\',\'/g")'"
-  fi
-  cat >> meson-cross.mingw.txt << EOF
-
-[properties]
-c_args = [$c_args]
-c_link_args = [$link_args]
-cpp_args = [$cpp_args]
-cpp_link_args = [$link_args]
-EOF
 }
 
 build_mp4box() { # like build_gpac
@@ -2002,17 +2161,30 @@ build_ffmpeg() {
   cd $output_dir
     #apply_patch file://$patch_dir/frei0r_load-shared-libraries-dynamically.diff
     local arch=x86_64
+    apply_patch https://gitlab.com/AOMediaCodec/SVT-AV1/-/raw/master/.gitlab/workflows/linux/ffmpeg_n7_fix.patch -p1 # temporary patch
 
-    config_options="--cc=clang --cxx=clang++ --pkg-config=pkg-config --pkg-config-flags=--static --extra-version=ffmpeg-build-helpers --enable-version3 --disable-debug --disable-w32threads"
+    sed -i.bak "s|-lstdc++ -lm -lgcc_s -lgcc -lc -lgcc_s -lgcc|-static-libgcc -lstdc++ -lm -static-libgcc -lc -static-libgcc|" "${mingw_w64_x86_64_prefix}/lib/pkgconfig/srt.pc"
+    sed -i.bak "s|-lstdc++ -lm -lgcc_s -lgcc -lgcc_s -lgcc -lrt -ldl|-static-libgcc -lstdc++ -lm -static-libgcc -lrt -ldl|" "${mingw_w64_x86_64_prefix}/lib/pkgconfig/x265.pc"
+    sed -i.bak "s|-static-libgcc -pthread -ldl -latomic -lm|-static-libgcc -lstdc++ -pthread -ldl -latomic -lm|" "${mingw_w64_x86_64_prefix}/lib/pkgconfig/openal.pc"
+    sed -i.bak "s|-lvpl -ldl.*|-lvpl -ldl -lmfx -lstdc++ -ldl|" "${mingw_w64_x86_64_prefix}/lib/pkgconfig/vpl.pc"
+    ln -s "${mingw_w64_x86_64_prefix}/share/pkgconfig/OpenCL-Headers.pc" "${mingw_w64_x86_64_prefix}/lib/pkgconfig/"
+    mv "${mingw_w64_x86_64_prefix}/lib/pkgconfig/OpenCL-Headers.pc" "${mingw_w64_x86_64_prefix}/lib/pkgconfig/OpenCL.pc" 
+    config_options="--pkg-config=pkg-config --pkg-config-flags=--static --extra-version=ffmpeg-build-helpers --enable-version3 --disable-debug --disable-w32threads"
     # just use locally packages for all the xcb stuff for now, you need to install them locally first...
     
+    if [[ $libvmaf_cuda == "n" ]]; then
+      # cuda cannot static link
+      config_options+=" --extra-cflags=-static"
+      config_options+=" --extra-ldflags=-static"
+    fi
+    config_options+=" --extra-cflags=-Wno-error=incompatible-pointer-types" # broke lib4lv2 gcc-14 thing don't know how to fix
     config_options+=" --enable-libvvenc"
     config_options+=" --enable-version3"
     config_options+=" --enable-libxcb-shm" 
     config_options+=" --enable-libxcb-xfixes" 
     config_options+=" --enable-libxcb-shape"
     config_options+=" --enable-libxcb"
-    #config_options+=" --enable-libv4l2"
+    config_options+=" --enable-libv4l2"
     config_options+=" --enable-libcaca"
     config_options+=" --enable-gray"
     config_options+=" --enable-libtesseract"
@@ -2048,21 +2220,37 @@ build_ffmpeg() {
     config_options+=" --enable-libvmaf"
     config_options+=" --enable-libsrt"
     config_options+=" --enable-libxml2"
-    config_options+=" --enable-opengl"
+    #config_options+=" --enable-opengl"
     config_options+=" --enable-libdav1d"
     config_options+=" --enable-gnutls"
     config_options+=" --enable-ffnvcodec"
     config_options+=" --enable-cuda"
     config_options+=" --enable-cuvid"
     config_options+=" --enable-nvdec"
-    config_options+=" --enable-cuda-nvcc"
     config_options+=" --enable-cuda-llvm"
+    config_options+=" --enable-libharfbuzz"
+    config_options+=" --enable-omx"
+    config_options+=" --enable-libglslang"
+    config_options+=" --enable-openal"
+    config_options+=" --enable-opencl"
+    config_options+=" --enable-libdvdread"
+    config_options+=" --enable-sdl2"
+    #config_options+=" --enable-vulkan-static" # window only ? 
+    config_options+=" --disable-vulkan"
+    config_options+=" --enable-vaapi"
+    config_options+=" --enable-v4l2-m2m"
+    #config_options+=" --enable-vdpau"
+    config_options+=" --disable-vdpau"
+    config_options+=" --enable-libvpl"
+    config_options+=" --enable-vapoursynth"
+    #config_options+=" --enable-libcdio" # need cdparanoid
     
     if [[ $libvmaf_cuda == "y" ]]; then
     # should be fine even if paths are hard code
-      config_options+=" --extra-cflags=-I/usr/local/cuda/include/"
-      config_options+=" --extra-ldflags=-L/usr/local/cuda/lib64/"
-      config_options+=" --extra-ldflags=-L/usr/local/cuda/lib64/stubs/"
+      config_options+=" --extra-cflags=-I/usr/local/cuda/include"
+      config_options+=" --extra-ldflags=-L/usr/local/cuda/lib64"
+      config_options+=" --extra-ldflags=-L/usr/local/cuda/lib64/stubs"
+      config_options+=" --enable-cuda-nvcc"
     fi
 
       if [[ $build_svt_hevc = y ]]; then
@@ -2084,6 +2272,8 @@ build_ffmpeg() {
     config_options+=" --enable-libsvtav1"
     config_options+=" --enable-libvpx"
     config_options+=" --enable-libaom"
+    #config_options+=" --enable-libmfx"
+    config_options+=" --enable-amf"
 
     # the order of extra-libs switches is important (appended in reverse)
     config_options+=" --extra-libs=-lz"
@@ -2095,17 +2285,8 @@ build_ffmpeg() {
     #config_options+=" --extra-ldflags="-L${mingw_w64_x86_64_prefix}/lib" --extra-cflags="-I${mingw_w64_x86_64_prefix}/include""
 
     config_options+=" --extra-cflags=-DLIBTWOLAME_STATIC --extra-cflags=-DMODPLUG_STATIC --extra-cflags=-DCACA_STATIC" # if we ever do a git pull then it nukes changes, which overrides manual changes to configure, so just use these for now :|
-    if [[ $build_amd_amf = n ]]; then
-      config_options+=" --disable-amf" # Since its autodetected we have to disable it if we do not want it. #unless we define no autodetection but.. we don't.
-    else
-      config_options+=" --enable-amf" # This is actually autodetected but for consistency.. we might as well set it.
-    fi
 
-    if [[ $build_intel_qsv = y && $compiler_flavors != "native" ]]; then # Broken for native builds right now: https://github.com/lu-zero/mfx_dispatch/issues/71
-      config_options+=" --enable-libmfx"
-    else
-      config_options+=" --disable-libmfx"
-    fi
+      
     
     if [[ $ffmpeg_git_checkout_version != *"n6.0"* ]] && [[ $ffmpeg_git_checkout_version != *"n5.1"* ]] && [[ $ffmpeg_git_checkout_version != *"n5.0"* ]] && [[ $ffmpeg_git_checkout_version != *"n4.4"* ]] && [[ $ffmpeg_git_checkout_version != *"n4.3"* ]] && [[ $ffmpeg_git_checkout_version != *"n4.2"* ]] && [[ $ffmpeg_git_checkout_version != *"n4.1"* ]] && [[ $ffmpeg_git_checkout_version != *"n3.4"* ]] && [[ $ffmpeg_git_checkout_version != *"n3.2"* ]] && [[ $ffmpeg_git_checkout_version != *"n2.8"* ]]; then
       # Disable libaribcatption on old versions
@@ -2251,9 +2432,7 @@ build_ffmpeg_dependencies() {
   if [[ $build_amd_amf = y ]]; then
     build_amd_amf_headers
   fi
-  if [[ $build_intel_qsv = y && $compiler_flavors != "native" ]]; then # Broken for native builds right now: https://github.com/lu-zero/mfx_dispatch/issues/71
-    build_intel_qsv_mfx
-  fi
+  build_intel_qsv_mfx
   build_nv_headers
   build_libzimg # Uses dlfcn.
   build_libopenjpeg
@@ -2270,7 +2449,7 @@ build_ffmpeg_dependencies() {
   build_gmp # For rtmp support configure FFmpeg with '--enable-gmp'. Uses dlfcn.
   #build_librtmfp # mainline ffmpeg doesn't use it yet
   build_libnettle # Needs gmp >= 3.0. Uses dlfcn.
-  build_unistring
+  build_libunistring
   build_libidn2 # needs iconv and unistring
   build_gnutls # Needs nettle >= 3.1, hogweed (nettle) >= 3.1. Uses libidn2, unistring, zlib, and dlfcn.
   #if [[ "$non_free" = "y" ]]; then
@@ -2285,7 +2464,7 @@ build_ffmpeg_dependencies() {
   build_libtheora # Needs libogg >= 1.1. Needs libvorbis >= 1.0.1, sdl and libpng for test, programs and examples [disabled]. Uses dlfcn.
   build_libsndfile "install-libgsm" # Needs libogg >= 1.1.3 and libvorbis >= 1.2.3 for external support [disabled]. Uses dlfcn. 'build_libsndfile "install-libgsm"' to install the included LibGSM 6.10.
   build_mpg123
-  build_lame # Uses dlfcn, mpg123
+  build_mp3lame # Uses dlfcn, mpg123
   build_twolame # Uses libsndfile >= 1.0.0 and dlfcn.
   build_libopencore # Uses dlfcn.
   build_libilbc # Uses dlfcn.
@@ -2330,8 +2509,19 @@ build_ffmpeg_dependencies() {
   build_libopenh264
   build_dav1d
   build_avisynth
-  build_libv4l2
+  build_libv4l2 # broken
   build_libx264 # at bottom as it might internally build a copy of ffmpeg (which needs all the above deps...
+  build_libglslang
+  build_flac
+  build_omx
+  build_libdvdread
+  build_openal
+  build_opencl
+  build_libvpl
+  build_libva
+  build_vdpau
+  build_vulkan_loader
+  build_libcdio
  }
 
 build_apps() {
@@ -2468,16 +2658,17 @@ host_target=x86_64-linux-gnu
 # mkdir required for realpath first time
 mkdir -p "$cur_dir/cross_compilers/native"
 mkdir -p "$cur_dir/cross_compilers/native/bin"
-mingw_w64_x86_64_prefix="$(realpath $cur_dir/cross_compilers/native)"
-mingw_bin_path="$(realpath $cur_dir/cross_compilers/native/bin)" # sdl needs somewhere to drop "binaries"??
+mingw_w64_x86_64_prefix="$(realpath "$cur_dir/cross_compilers/native")"
+mingw_bin_path="$(realpath "$cur_dir/cross_compilers/native/bin")" # sdl needs somewhere to drop "binaries"??
 export PKG_CONFIG_PATH="$mingw_w64_x86_64_prefix/lib/pkgconfig:$mingw_w64_x86_64_prefix/share/pkgconfig/"
 export PATH="$mingw_bin_path:$original_path"
+echo "PATH include: $PATH" 
 make_prefix_options="PREFIX=$mingw_w64_x86_64_prefix"
 bits_target=64
 #  bs2b doesn't use pkg-config, sndfile needed Carbon :|
-export CPATH="$cur_dir/cross_compilers/native/include:/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks/Carbon.framework/Versions/A/Headers" # C_INCLUDE_PATH
-export LIBRARY_PATH="$cur_dir/cross_compilers/native/lib"
-work_dir="$(realpath $cur_dir/native)"
+export CPATH=""$cur_dir/cross_compilers/native/include":/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks/Carbon.framework/Versions/A/Headers" # C_INCLUDE_PATH
+export LIBRARY_PATH=""$cur_dir/cross_compilers/native/lib""
+work_dir="$(realpath "$cur_dir/native")"
 mkdir -p "$work_dir"
 cd "$work_dir"
   build_ffmpeg_dependencies

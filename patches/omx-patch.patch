@@ -1,0 +1,13 @@
+diff --git a/configure.ac b/configure.ac
+index 4d9797c..7c2e88d 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -5,7 +5,7 @@ AM_INIT_AUTOMAKE()
+ AC_PREREQ([2.59])
+ 
+ AC_CONFIG_HEADERS([config.h])
+-CFLAGS="${CFLAGS} -Wall -Werror"
++CFLAGS="${CFLAGS} -Wall"
+ 
+ ################################################################################
+ # Set the shared versioning info, according to section 6.3 of the libtool info #
