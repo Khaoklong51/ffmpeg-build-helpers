@@ -2177,7 +2177,7 @@ build_ffmpeg() {
       config_options+=" --extra-cflags=-static"
       config_options+=" --extra-ldflags=-static"
     fi
-    config_options+=" --extra-cflags=-Wno-error=incompatible-pointer-types" # broke lib4lv2 gcc-14 thing don't know how to fix
+    config_options+=" --extra-cflags=-Wno-error=incompatible-pointer-types" # broke lib4lv2 in ffmpeg gcc-14 thing don't know how to fix
     config_options+=" --enable-libvvenc"
     config_options+=" --enable-version3"
     config_options+=" --enable-libxcb-shm" 
@@ -2220,7 +2220,7 @@ build_ffmpeg() {
     config_options+=" --enable-libvmaf"
     config_options+=" --enable-libsrt"
     config_options+=" --enable-libxml2"
-    #config_options+=" --enable-opengl"
+    #config_options+=" --enable-opengl" cannot static ? 
     config_options+=" --enable-libdav1d"
     config_options+=" --enable-gnutls"
     config_options+=" --enable-ffnvcodec"
@@ -2239,7 +2239,7 @@ build_ffmpeg() {
     config_options+=" --disable-vulkan"
     config_options+=" --enable-vaapi"
     config_options+=" --enable-v4l2-m2m"
-    #config_options+=" --enable-vdpau"
+    #config_options+=" --enable-vdpau" # cannot static ? 
     config_options+=" --disable-vdpau"
     config_options+=" --enable-libvpl"
     config_options+=" --enable-vapoursynth"
@@ -2272,7 +2272,6 @@ build_ffmpeg() {
     config_options+=" --enable-libsvtav1"
     config_options+=" --enable-libvpx"
     config_options+=" --enable-libaom"
-    #config_options+=" --enable-libmfx"
     config_options+=" --enable-amf"
 
     # the order of extra-libs switches is important (appended in reverse)
@@ -2282,7 +2281,6 @@ build_ffmpeg() {
     config_options+=" --extra-libs=-lfreetype" # libbluray need
     config_options+=" --extra-libs=-lpthread" # for some reason various and sundry needed this linux native
     config_options+=" --extra-libs=-lmpg123" # ditto libm3lame need
-    #config_options+=" --extra-ldflags="-L${mingw_w64_x86_64_prefix}/lib" --extra-cflags="-I${mingw_w64_x86_64_prefix}/include""
 
     config_options+=" --extra-cflags=-DLIBTWOLAME_STATIC --extra-cflags=-DMODPLUG_STATIC --extra-cflags=-DCACA_STATIC" # if we ever do a git pull then it nukes changes, which overrides manual changes to configure, so just use these for now :|
 
