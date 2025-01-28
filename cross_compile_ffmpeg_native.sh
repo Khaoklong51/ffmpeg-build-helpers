@@ -2064,9 +2064,9 @@ build_libcdio() {
   cd ..
 }
 
+# this is the actual library ffmpeg need 
 build_libcdio_paranoia() {
   build_libcdio
-  # this is the actual library ffmpeg need 
   do_git_checkout $LIBCDIO_CDPARANOIA_URL libcdio-paranoia-git
   cd libcdio-paranoia-git
     generic_configure "--enable-shared=no"
