@@ -478,6 +478,7 @@ do_cmake() {
   export CMAKE_INSTALL_PREFIX=$mingw_w64_x86_64_prefix
   if [ ! -f $touch_name ]; then
     rm -f already_* # reset so that make will run again if option just changed
+    rm -rf build-sandbox # reset some require this
     local cur_dir2=$(pwd)
     echo doing cmake in $cur_dir2 with PATH=$mingw_bin_path:\$PATH with extra_args=$extra_args like this:
     local command="$build_from_dir --fresh -G Ninja -B build-sandbox -DBUILD_SHARED_LIBS=OFF -DCMAKE_BUILD_TYPE=Release -DENABLE_STATIC_RUNTIME=1 $extra_args"
@@ -586,21 +587,30 @@ do_cargo() {
 
 do_cargo_install() {
   local install_type=$1
-  local extra_cargo_option="$2 --root=$mingw_w64_x86_64_prefix"
-  local cur_dir2=$(pwd)
-  local touch_name=$(get_small_touchfile_name already_ran_cargo_install "${extra_cargo_option}")
+  local extra_cargo_option="$2 --release "
+  local cur_dir=$(pwd)
+  local touch_name=$(get_small_touchfile_name already_ran_cargo_install "$extra_cargo_option")
 
+  # Set default install type and prefix
   if [[ -z $install_type ]]; then
     install_type="install"
+    prefix_type="--root=$mingw_w64_x86_64_prefix"
+  elif [[ $install_type == "cinstall" ]]; then
+    prefix_type="--prefix=$mingw_w64_x86_64_prefix"
   fi
 
+  # Add prefix to extra options
+  extra_cargo_option+="$prefix_type"
+
+  # Check if already installed
   if [ ! -f "$touch_name" ]; then
+    cargo clean # reset
     local cargo_command="cargo $install_type $extra_cargo_option"
-    echo "cargo install $cur_dir2 as PATH=$PATH $cargo_command"
+    echo "Executing: $cargo_command"
     $cargo_command || exit 1
     touch "$touch_name"
   else
-    echo "already done cargo install $(basename "$cur_dir2")"
+    echo "Cargo install already completed for $(basename "$cur_dir")"
   fi
 }
 
@@ -1211,7 +1221,6 @@ check_vmaf_compiler() {
 build_libvmaf() {
   do_git_checkout https://github.com/Netflix/vmaf.git vmaf-git
   cd vmaf-git
-  check_vmaf_compiler
     cd libvmaf
     export CFLAGS="$CFLAGS -pthread"
     export CXXFLAGS="$CFLAGS -pthread"
@@ -1219,6 +1228,7 @@ build_libvmaf() {
     mkdir build
     local meson_options="-Denable_docs=false -Denable_tests=false -Denable_float=true"
     if [[ $libvmaf_cuda == "y" ]]; then
+        check_vmaf_compiler
        local meson_options+=" -Denable_cuda=true"
     fi
     do_meson "$meson_options"
@@ -1229,8 +1239,10 @@ build_libvmaf() {
     rm -f ${mingw_w64_x86_64_prefix}/lib/libvmaf.so
     # TODO: better patch pc file
     sed -i.bak "s/Libs: .*/& -lstdc++/" "${mingw_w64_x86_64_prefix}/lib/pkgconfig/libvmaf.pc" # .pc is still broken
-    unset CC
-    unset CXX
+    if [[ $libvmaf_cuda == "y" ]]; then
+      unset CC
+      unset CXX
+    fi
   cd ../..
 }
 
@@ -1711,17 +1723,12 @@ build_zvbi() {
 }
 
 build_libv4l2() {
+  build_libopenjpeg
   build_libjpeg_turbo
   do_git_checkout $libv4l_git libv4l-git
   cd libv4l-git
-    #apply_patch file://$patch_dir/libv4l-patch.patch -p1
-    #cd libv4l2
-    #export PREFIX="${mingw_w64_x86_64_prefix}"
-    #export LIBDIR="$PREFIX/lib"
-    #do_make_and_make_install
-    #unset PREFIX
-    #unset LIBDIR
     do_meson
+    # require sudo permission when install
     do_ninja_and_ninja_install
   cd ..
 }
@@ -2059,7 +2066,7 @@ build_libcdio() {
   do_git_checkout $LIBCDIO_URL libcdio-git
   cd libcdio-git
     generic_configure "--enable-year2038 --enable-vcd-info  --disable-rpath --enable-shared=no"
-    make -j $cpu_count # broken make build 
+    make install -j $cpu_count # broken make build
     export PKG_CONFIG_PATH="$PKG_CONFIG_PATH:$(pwd)" # add this folder path to pkgconfig instead
   cd ..
 }
@@ -2071,6 +2078,23 @@ build_libcdio_paranoia() {
   cd libcdio-paranoia-git
     generic_configure "--enable-shared=no"
     do_make_and_make_install
+  cd ..
+}
+
+build_libcodec2() {
+  do_git_checkout $CODEC2_URL codec2-git
+  cd codec2-git
+    grep -ERl "\b(lsp|lpc)_to_(lpc|lsp)" --include="*.[ch]" | \
+    xargs -r sed -ri "s;((lsp|lpc)_to_(lpc|lsp));c2_\1;g"
+    
+    do_cmake_and_install
+  cd ..
+}
+
+build_rav1e() {
+  do_git_checkout $RAV1E_URL rav1e-git
+  cd rav1e-git
+    do_cargo_install "cinstall"
   cd ..
 }
 
@@ -2138,8 +2162,13 @@ build_ffmpeg() {
     #sed -i.bak "s|-lstdc++ -lm -lgcc_s -lgcc -lgcc_s -lgcc -lrt -ldl|-static-libgcc -lstdc++ -lm -static-libgcc -lrt -ldl|" "${mingw_w64_x86_64_prefix}/lib/pkgconfig/x265.pc"
     sed -i.bak "s|-static-libgcc -pthread -ldl -latomic -lm|-static-libgcc -lstdc++ -pthread -ldl -latomic -lm|" "${mingw_w64_x86_64_prefix}/lib/pkgconfig/openal.pc"
     sed -i.bak "s|-lvpl -ldl.*|-lvpl -ldl -lmfx -lstdc++ -ldl|" "${mingw_w64_x86_64_prefix}/lib/pkgconfig/vpl.pc"
+    #sed -i.bak "s|-lcdio_cdda -lcdio -lm|-lcdio_cdda -lcdio -lm -liconv|" "${mingw_w64_x86_64_prefix}/lib/pkgconfig/libcdio_cdda.pc"
     ln -s "${mingw_w64_x86_64_prefix}/share/pkgconfig/OpenCL-Headers.pc" "${mingw_w64_x86_64_prefix}/lib/pkgconfig/"
-    ln -s "${mingw_w64_x86_64_prefix}/lib/pkgconfig/OpenCL-Headers.pc" "${mingw_w64_x86_64_prefix}/lib/pkgconfig/OpenCL.pc" 
+    ln -s "${mingw_w64_x86_64_prefix}/lib/pkgconfig/OpenCL-Headers.pc" "${mingw_w64_x86_64_prefix}/lib/pkgconfig/OpenCL.pc"
+    
+    python "../../../python/symlink_all_file.py" \
+    --input-folder "${mingw_w64_x86_64_prefix}/lib/x86_64-linux-gnu/pkgconfig/" \
+    --output-folder "${mingw_w64_x86_64_prefix}/lib/pkgconfig/" || (echo "symlink failed" && exit 1)
     
     config_options="--pkg-config=pkg-config --pkg-config-flags=--static --extra-version=ffmpeg-build-helpers --enable-version3 --disable-debug --disable-w32threads"
     # just use locally packages for all the xcb stuff for now, you need to install them locally first...
@@ -2209,7 +2238,9 @@ build_ffmpeg() {
     config_options+=" --enable-vdpau" # cannot static ? 
     config_options+=" --enable-libvpl"
     config_options+=" --enable-vapoursynth"
-    config_options+=" --enable-libcdio" # this need libcdio-paranoia
+    config_options+=" --enable-libcdio" # this need libcdio-paranoia not libcdio or libcdparanoia
+    config_options+=" --enable-libcodec2"
+    config_options+=" --enable-librav1e"
 
     
     if [[ $libvmaf_cuda == "y" ]]; then
@@ -2248,6 +2279,7 @@ build_ffmpeg() {
     config_options+=" --extra-libs=-lfreetype" # libbluray need
     config_options+=" --extra-libs=-lpthread" # for some reason various and sundry needed this linux native
     config_options+=" --extra-libs=-lmpg123" # ditto libm3lame need
+    config_options+=" --extra-libs=-liconv" # libcdio need this ?
 
     config_options+=" --extra-cflags=-DLIBTWOLAME_STATIC --extra-cflags=-DMODPLUG_STATIC --extra-cflags=-DCACA_STATIC" # if we ever do a git pull then it nukes changes, which overrides manual changes to configure, so just use these for now :|
 
@@ -2380,12 +2412,13 @@ build_ffmpeg_dependencies() {
     build_dlfcn
     build_libxavs
   fi
+  build_libv4l2 # put in the top, read comment in function
   build_libaom
   build_libx265
   build_libdavs2
+  build_rav1e
   build_libxavs2
 
-  build_meson_cross
   build_mingw_std_threads
   build_libffi
   build_zlib # Zlib in FFmpeg is autodetected.
@@ -2394,9 +2427,7 @@ build_ffmpeg_dependencies() {
   build_liblzma # Lzma in FFmpeg is autodetected. Uses dlfcn.
   build_iconv # Iconv in FFmpeg is autodetected. Uses dlfcn.
   build_sdl2 # Sdl2 in FFmpeg is autodetected. Needed to build FFPlay. Uses iconv and dlfcn.
-  if [[ $build_amd_amf = y ]]; then
-    build_amd_amf_headers
-  fi
+  build_amd_amf_headers
   build_intel_qsv_mfx
   build_nv_headers
   build_libzimg # Uses dlfcn.
@@ -2474,7 +2505,6 @@ build_ffmpeg_dependencies() {
   build_libopenh264
   build_dav1d
   build_avisynth
-  build_libv4l2 # broken
   build_libx264 # at bottom as it might internally build a copy of ffmpeg (which needs all the above deps...
   build_libglslang
   build_flac
@@ -2484,7 +2514,8 @@ build_ffmpeg_dependencies() {
   build_opencl
   build_libvpl
   build_libva
-  build_libcdio_paranoia # broken use system package instead
+  build_libcdio_paranoia 
+  build_libcodec2
  }
 
 build_apps() {
@@ -2619,19 +2650,19 @@ echo "starting native build..."
 host_target=x86_64-linux-gnu
 # realpath so if you run it from a different symlink path it doesn't rebuild the world...
 # mkdir required for realpath first time
-mkdir -p "$cur_dir/cross_compilers/native"
-mkdir -p "$cur_dir/cross_compilers/native/bin"
-mingw_w64_x86_64_prefix="$(realpath "$cur_dir/cross_compilers/native")"
-mingw_bin_path="$(realpath "$cur_dir/cross_compilers/native/bin")" # sdl needs somewhere to drop "binaries"??
+mkdir -p "$cur_dir/prefix/"
+mkdir -p "$cur_dir/prefix//bin"
+mingw_w64_x86_64_prefix="$(realpath "$cur_dir/prefix/")"
+mingw_bin_path="$(realpath "$cur_dir/prefix//bin")" # sdl needs somewhere to drop "binaries"??
 export PKG_CONFIG_PATH="$mingw_w64_x86_64_prefix/lib/pkgconfig:$mingw_w64_x86_64_prefix/share/pkgconfig/"
 export PATH="$mingw_bin_path:$original_path"
 echo "PATH include: $PATH" 
 make_prefix_options="PREFIX=$mingw_w64_x86_64_prefix"
 bits_target=64
 #  bs2b doesn't use pkg-config, sndfile needed Carbon :|
-export CPATH=""$cur_dir/cross_compilers/native/include":/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks/Carbon.framework/Versions/A/Headers" # C_INCLUDE_PATH
-export LIBRARY_PATH=""$cur_dir/cross_compilers/native/lib""
-work_dir="$(realpath "$cur_dir/native")"
+export CPATH=""$cur_dir/prefix/include":/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks/Carbon.framework/Versions/A/Headers" # C_INCLUDE_PATH
+export LIBRARY_PATH=""$cur_dir/prefix/lib""
+work_dir="$(realpath "$cur_dir/source_folder")"
 mkdir -p "$work_dir"
 cd "$work_dir"
   build_ffmpeg_dependencies

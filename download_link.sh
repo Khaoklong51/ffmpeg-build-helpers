@@ -138,3 +138,5 @@ VULKAN_LOADER_URL=https://github.com/KhronosGroup/Vulkan-Loader.git
 VULKAN_HEADER_URL=https://github.com/KhronosGroup/Vulkan-Headers.git
 LIBCDIO_URL=https://github.com/libcdio/libcdio.git
 LIBCDIO_CDPARANOIA_URL=https://github.com/libcdio/libcdio-paranoia.git
+CODEC2_URL=https://github.com/drowe67/codec2.git
+RAV1E_URL=https://github.com/xiph/rav1e.git
