@@ -136,4 +136,5 @@ SPIRV_LLVM_TRASLATOR_URL=https://github.com/KhronosGroup/SPIRV-LLVM-Translator.g
 LIBVPL_URL=https://github.com/intel/libvpl.git
 VULKAN_LOADER_URL=https://github.com/KhronosGroup/Vulkan-Loader.git
 VULKAN_HEADER_URL=https://github.com/KhronosGroup/Vulkan-Headers.git
-LIBCDIO_URL=https://git.savannah.gnu.org/git/libcdio.git
+LIBCDIO_URL=https://github.com/libcdio/libcdio.git
+LIBCDIO_CDPARANOIA_URL=https://github.com/libcdio/libcdio-paranoia.git

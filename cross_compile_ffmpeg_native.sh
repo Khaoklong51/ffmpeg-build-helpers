@@ -675,7 +675,7 @@ download_and_unpack_file() {
 
 generic_configure() {
   local extra_configure_options="$1"
-  do_configure "--host=$host_target --prefix=$mingw_w64_x86_64_prefix --disable-shared --enable-static $extra_configure_options"
+  do_configure "--prefix=$mingw_w64_x86_64_prefix --disable-shared --enable-static $extra_configure_options"
 }
 
 # params: url, optional "english name it will unpack to"
@@ -999,7 +999,6 @@ build_rust_bindgen() {
 
 build_glew() {
   build_libglslang
-  build_libglvnd
   download_and_unpack_file $glew_tgz glew-2.2.0
   cd glew-2.2.0/build/cmake
     local cmake_params="-DBUILD_UTILS=OFF"
@@ -1572,7 +1571,7 @@ build_vamp_plugin() {
       sed -i.bak "s/c++11/gnu++11/" configure
       sed -i.bak "s/c++11/gnu++11/" Makefile.in
     fi
-    do_configure "--host=$host_target --prefix=$mingw_w64_x86_64_prefix --disable-programs"
+    do_configure "--prefix=$mingw_w64_x86_64_prefix --disable-programs"
     do_make "install-static" # No need for 'do_make_install', because 'install-static' already has install-instructions.
   cd ..
 }
@@ -1771,7 +1770,7 @@ build_libxavs2() {
     export CFLAGS="$CFLAGS -Wno-error=incompatible-pointer-types" # gcc-14 thing don't know how to fix
     apply_patch file://$patch_dir/xavs2-patch.patch -p1
     cd build/linux
-      do_configure "--cross-prefix=$cross_prefix --host=$host_target --prefix=$mingw_w64_x86_64_prefix --enable-pic" ""
+      do_configure "--cross-prefix=$cross_prefix --prefix=$mingw_w64_x86_64_prefix --enable-pic" ""
       do_make_and_make_install
     reset_cflags
   cd ../../..
@@ -1783,7 +1782,7 @@ build_libdavs2() {
     apply_patch file://$patch_dir/libdavs2-endian-fixes.patch -p1
     #apply_patch https://github.com/pkuvcl/xavs2/compare/master...1480c1:xavs2:gcc14/pointerconversion.patch
     cd build/linux
-      do_configure "--host=$host_target --prefix=$mingw_w64_x86_64_prefix --enable-pic"
+      do_configure "--prefix=$mingw_w64_x86_64_prefix --enable-pic"
       do_make_and_make_install
   cd ../../..
 }
@@ -1792,7 +1791,7 @@ build_libxvid() {
   download_and_unpack_file $libxvid_tar xvidcore
   cd xvidcore/build/generic
     apply_patch file://$patch_dir/xvidcore-1.3.7_static-lib.patch "" "patch"
-    do_configure "--host=$host_target --prefix=$mingw_w64_x86_64_prefix" # no static option...
+    do_configure "--prefix=$mingw_w64_x86_64_prefix" # no static option...
     do_make_and_make_install
   cd ../../..
 }
@@ -1899,7 +1898,7 @@ build_libx264() {
       sed -i.bak "s/O3 -/O2 -/" configure
     fi
 
-    local configure_flags="--host=$host_target --enable-static --cross-prefix=$cross_prefix --prefix=$mingw_w64_x86_64_prefix --enable-strip" # --enable-win32thread --enable-debug is another useful option here?
+    local configure_flags="--enable-static --cross-prefix=$cross_prefix --prefix=$mingw_w64_x86_64_prefix --enable-strip" # --enable-win32thread --enable-debug is another useful option here?
     configure_flags+=" --disable-lavf"
     configure_flags+=" --bit-depth=all"
     for i in $CFLAGS; do
@@ -2007,14 +2006,6 @@ build_glu() {
   cd ..
 }
 
-build_libglvnd() {
-  do_git_checkout $LIBGLVND_URL libglvnd-git
-  cd libglvnd-git
-    do_meson
-    do_ninja_and_ninja_install
-  cd ..
-}
-
 build_libatomic_ops() {
   do_git_checkout $LIPATOMIC_OPS_URL libatomic-ops-git
   cd libatomic-ops-git
@@ -2040,26 +2031,10 @@ build_libdrm() {
   cd ..
 }
 
-build_vdpau() {
-  do_git_checkout $VDAPU_URL vdapu-git
-  cd vdapu-git
-    do_meson
-    do_ninja_and_ninja_install
-  cd ..
-}
 
 build_libva() {
   build_libdrm
   do_git_checkout_and_make_install $LIBVA_URL libav-git
-}
-
-build_opengl() {
-  build_mesa
-  do_git_checkout $OPENGL_URL opengl-git
-  cd opengl-git
-    do_meson "-Dx11=enabled -Dasm=enabled -Degl=true -Dglx=enabled"
-    do_ninja_and_ninja_install
-  cd ..
 }
 
 build_opencl() {
@@ -2080,26 +2055,22 @@ build_libvpl() {
   cd ..
 }
 
-build_vulkan_header() {
-  do_git_checkout $VULKAN_HEADER_URL vulkan-header-git
-  cd vulkan-header-git
-    do_cmake_and_install
-  cd ..
-}
-
-build_vulkan_loader() {
-  build_vulkan_header
-  do_git_checkout $VULKAN_LOADER_URL vulkan-Loader-git
-  cd vulkan-Loader-git
-    do_cmake ""
-    do_ninja_and_ninja_install
-  cd ..
-}
-
 build_libcdio() {
   do_git_checkout $LIBCDIO_URL libcdio-git
   cd libcdio-git
-    generic_configure "--enable-year2038 --enable-vcd-info  --disable-rpath"
+    generic_configure "--enable-year2038 --enable-vcd-info  --disable-rpath --enable-shared=no"
+    make -j $cpu_count # broken make build 
+    export PKG_CONFIG_PATH="$PKG_CONFIG_PATH:$(pwd)" # add this folder path to pkgconfig instead
+  cd ..
+}
+
+build_libcdio_paranoia() {
+  build_libcdio
+  # this is the actual library ffmpeg need 
+  do_git_checkout $LIBCDIO_CDPARANOIA_URL libcdio-paranoia-git
+  cd libcdio-paranoia-git
+    generic_configure "--enable-shared=no"
+    do_make_and_make_install
   cd ..
 }
 
@@ -2163,20 +2134,16 @@ build_ffmpeg() {
     local arch=x86_64
     apply_patch https://gitlab.com/AOMediaCodec/SVT-AV1/-/raw/master/.gitlab/workflows/linux/ffmpeg_n7_fix.patch -p1 # temporary patch
 
-    sed -i.bak "s|-lstdc++ -lm -lgcc_s -lgcc -lc -lgcc_s -lgcc|-static-libgcc -lstdc++ -lm -static-libgcc -lc -static-libgcc|" "${mingw_w64_x86_64_prefix}/lib/pkgconfig/srt.pc"
-    sed -i.bak "s|-lstdc++ -lm -lgcc_s -lgcc -lgcc_s -lgcc -lrt -ldl|-static-libgcc -lstdc++ -lm -static-libgcc -lrt -ldl|" "${mingw_w64_x86_64_prefix}/lib/pkgconfig/x265.pc"
+    #sed -i.bak "s|-lstdc++ -lm -lgcc_s -lgcc -lc -lgcc_s -lgcc|-static-libgcc -lstdc++ -lm -static-libgcc -lc -static-libgcc|" "${mingw_w64_x86_64_prefix}/lib/pkgconfig/srt.pc"
+    #sed -i.bak "s|-lstdc++ -lm -lgcc_s -lgcc -lgcc_s -lgcc -lrt -ldl|-static-libgcc -lstdc++ -lm -static-libgcc -lrt -ldl|" "${mingw_w64_x86_64_prefix}/lib/pkgconfig/x265.pc"
     sed -i.bak "s|-static-libgcc -pthread -ldl -latomic -lm|-static-libgcc -lstdc++ -pthread -ldl -latomic -lm|" "${mingw_w64_x86_64_prefix}/lib/pkgconfig/openal.pc"
     sed -i.bak "s|-lvpl -ldl.*|-lvpl -ldl -lmfx -lstdc++ -ldl|" "${mingw_w64_x86_64_prefix}/lib/pkgconfig/vpl.pc"
     ln -s "${mingw_w64_x86_64_prefix}/share/pkgconfig/OpenCL-Headers.pc" "${mingw_w64_x86_64_prefix}/lib/pkgconfig/"
-    mv "${mingw_w64_x86_64_prefix}/lib/pkgconfig/OpenCL-Headers.pc" "${mingw_w64_x86_64_prefix}/lib/pkgconfig/OpenCL.pc" 
+    ln -s "${mingw_w64_x86_64_prefix}/lib/pkgconfig/OpenCL-Headers.pc" "${mingw_w64_x86_64_prefix}/lib/pkgconfig/OpenCL.pc" 
+    
     config_options="--pkg-config=pkg-config --pkg-config-flags=--static --extra-version=ffmpeg-build-helpers --enable-version3 --disable-debug --disable-w32threads"
     # just use locally packages for all the xcb stuff for now, you need to install them locally first...
     
-    if [[ $libvmaf_cuda == "n" ]]; then
-      # cuda cannot static link
-      config_options+=" --extra-cflags=-static"
-      config_options+=" --extra-ldflags=-static"
-    fi
     config_options+=" --extra-cflags=-Wno-error=incompatible-pointer-types" # broke lib4lv2 in ffmpeg gcc-14 thing don't know how to fix
     config_options+=" --enable-libvvenc"
     config_options+=" --enable-version3"
@@ -2220,7 +2187,7 @@ build_ffmpeg() {
     config_options+=" --enable-libvmaf"
     config_options+=" --enable-libsrt"
     config_options+=" --enable-libxml2"
-    #config_options+=" --enable-opengl" cannot static ? 
+    config_options+=" --enable-opengl" # cannot static ? 
     config_options+=" --enable-libdav1d"
     config_options+=" --enable-gnutls"
     config_options+=" --enable-ffnvcodec"
@@ -2235,15 +2202,15 @@ build_ffmpeg() {
     config_options+=" --enable-opencl"
     config_options+=" --enable-libdvdread"
     config_options+=" --enable-sdl2"
-    #config_options+=" --enable-vulkan-static" # window only ? 
-    config_options+=" --disable-vulkan"
+    config_options+=" --enable-vulkan-static" # window only ? 
+    config_options+=" --enable-vulkan" # cannot static ?
     config_options+=" --enable-vaapi"
     config_options+=" --enable-v4l2-m2m"
-    #config_options+=" --enable-vdpau" # cannot static ? 
-    config_options+=" --disable-vdpau"
+    config_options+=" --enable-vdpau" # cannot static ? 
     config_options+=" --enable-libvpl"
     config_options+=" --enable-vapoursynth"
-    #config_options+=" --enable-libcdio" # need cdparanoid
+    config_options+=" --enable-libcdio" # this need libcdio-paranoia
+
     
     if [[ $libvmaf_cuda == "y" ]]; then
     # should be fine even if paths are hard code
@@ -2517,9 +2484,7 @@ build_ffmpeg_dependencies() {
   build_opencl
   build_libvpl
   build_libva
-  build_vdpau
-  build_vulkan_loader
-  build_libcdio
+  build_libcdio_paranoia # broken use system package instead
  }
 
 build_apps() {
