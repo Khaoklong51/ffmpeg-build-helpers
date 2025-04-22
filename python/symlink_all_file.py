@@ -12,7 +12,7 @@ args = parser.parse_args()
 input_folder = args.input_folder
 output_folder = args.output_folder
 
-files = sorted([f for f in os.listdir(input_folder)if os.path.isfile(os.path.join(input_folder, f))])
+files = sorted([f for f in os.listdir(input_folder) if os.path.isfile(os.path.join(input_folder, f))])
 
 for _, filename in enumerate(files):
     in_file = os.path.join(input_folder, filename)
