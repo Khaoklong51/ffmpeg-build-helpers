@@ -1099,11 +1099,12 @@ build_fontconfig() {
   build_brotli
   do_git_checkout $fontconfig_git fontconfig-git
   cd fontconfig-git
+    export CFLAGS="$CFLAGS -fpic"
     #export CFLAGS= # compile fails with -march=sandybridge ... with mingw 4.0.6 at least ...
     do_configure "--enable-iconv --enable-libxml2 --disable-docs --with-libiconv \
     --enable-static=yes --enable-shared=no --enable-year2038" # Use Libxml2 instead of Expat.
     do_make_and_make_install
-    reset_ldflags
+    reset_cflags
   cd ..
 }
 
@@ -2348,7 +2349,7 @@ build_ffmpeg_dependencies() {
   build_libspeexdsp # Needs libogg for examples. Uses dlfcn.
   build_libspeex # Uses libspeexdsp and dlfcn.
   build_libtheora # Needs libogg >= 1.1. Needs libvorbis >= 1.0.1, sdl and libpng for test, programs and examples [disabled]. Uses dlfcn.
-  build_libsndfile "install-libgsm" # Needs libogg >= 1.1.3 and libvorbis >= 1.2.3 for external support [disabled]. Uses dlfcn. 'build_libsndfile "install-libgsm"' to install the included LibGSM 6.10.
+  #build_libsndfile "install-libgsm" # Needs libogg >= 1.1.3 and libvorbis >= 1.2.3 for external support [disabled]. Uses dlfcn. 'build_libsndfile "install-libgsm"' to install the included LibGSM 6.10.
   build_mpg123
   build_mp3lame # Uses dlfcn, mpg123
   build_twolame # Uses libsndfile >= 1.0.0 and dlfcn.
