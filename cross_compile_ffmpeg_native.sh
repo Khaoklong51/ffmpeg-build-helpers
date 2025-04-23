@@ -325,18 +325,16 @@ do_cmake() {
     build_from_dir="."
   fi
   local touch_name=$(get_small_touchfile_name already_ran_cmake "$extra_args")
-  export CMAKE_INSTALL_PREFIX=$mingw_w64_x86_64_prefix
   if [ ! -f $touch_name ]; then
     rm -f already_* # reset so that make will run again if option just changed
     rm -rf build-sandbox # reset some require this
     local cur_dir2=$(pwd)
     echo doing cmake in $cur_dir2 with PATH=$mingw_bin_path:\$PATH with extra_args=$extra_args like this:
-    local command="$build_from_dir -G Ninja -B build-sandbox -DBUILD_SHARED_LIBS=OFF -DCMAKE_BUILD_TYPE=Release -DENABLE_STATIC_RUNTIME=1 $extra_args"
+    local command="$build_from_dir -DCMAKE_INSTALL_PREFIX=$mingw_w64_x86_64_prefix -G Ninja -B build-sandbox -DBUILD_SHARED_LIBS=OFF -DCMAKE_BUILD_TYPE=Release -DENABLE_STATIC_RUNTIME=1 $extra_args"
     echo "doing cmake $command"
     nice -n 5  cmake $command || exit 1
     touch $touch_name || exit 1
   fi
-  unset CMAKE_INSTALL_PREFIX
 }
 
 do_cmake_from_build_dir() { # some sources don't allow it, weird XXX combine with the above :)
