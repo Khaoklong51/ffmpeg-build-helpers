@@ -1083,6 +1083,7 @@ build_libvmaf() {
       local meson_options="-Denable_docs=false -Denable_tests=false -Denable_float=true"
       if [[ $libvmaf_cuda == "y" ]]; then
        check_vmaf_compiler
+        export CFLAGS="$CFLAGS -I/usr/local/cuda/lib64"
         local meson_options+=" -Denable_cuda=true"
       fi
       do_meson "$meson_options"
