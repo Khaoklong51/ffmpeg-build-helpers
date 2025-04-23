@@ -238,7 +238,7 @@ get_small_touchfile_name() { # have to call with assignment like a=$(get_small..
 }
 
 do_configure() {
-  local configure_options="$1"
+  local configure_options="$1 --prefix=$mingw_w64_x86_64_prefix"
   local configure_name="$2"
   if [[ -z $configure_name ]]; then
     local configure_name="./configure"
@@ -531,11 +531,6 @@ download_and_unpack_file() {
   fi
 }
 
-generic_configure() {
-  local extra_configure_options="$1"
-  do_configure "--prefix=$mingw_w64_x86_64_prefix --disable-shared --enable-static $extra_configure_options"
-}
-
 # params: url, optional "english name it will unpack to"
 generic_download_and_make_and_install() {
   local url="$1"
@@ -546,7 +541,7 @@ generic_download_and_make_and_install() {
   local extra_configure_options="$3"
   download_and_unpack_file $url $english_name
   cd $english_name || exit "unable to cd, may need to specify dir it will unpack to as parameter"
-  generic_configure "$extra_configure_options"
+  do_configure "$extra_configure_options"
   do_make_and_make_install
   cd ..
 }
@@ -556,17 +551,17 @@ do_git_checkout_and_make_install() {
   local git_checkout_name=$(basename $url | sed s/\.git/-git/) # http://y/abc.git -> abc-git
   do_git_checkout $url $git_checkout_name
   cd $git_checkout_name
-    generic_configure_make_install
+    do_configure_make_install
   cd ..
 }
 
-generic_configure_make_install() {
+do_configure_make_install() {
   if [ $# -gt 0 ]; then
     echo "cant pass parameters to this method today, they'd be a bit ambiguous"
     echo "The following arguments where passed: ${@}"
     exit 1
   fi
-  generic_configure # no parameters, force myself to break it up if needed
+  do_configure # no parameters, force myself to break it up if needed
   do_make_and_make_install
 }
 
@@ -623,7 +618,7 @@ build_zlib() {
 build_iconv() {
   download_and_unpack_file $iconv_tar 
   cd libiconv-1.16
-    generic_configure "--disable-nls"
+    do_configure "--disable-nls"
     do_make "install-lib" # No need for 'do_make_install', because 'install-lib' already has install-instructions.
   cd ..
 }
@@ -689,7 +684,7 @@ build_sdl2() {
     fi
     export CFLAGS="$CFLAGS -DDECLSPEC="  # avoid SDL trac tickets 939 and 282 [broken shared builds]
     unset PKG_CONFIG_LIBDIR # Allow locally installed things for native builds; libpulse-dev is an important one otherwise no audio for most Linux
-    generic_configure "--bindir=$mingw_bin_path"
+    do_configure "--bindir=$mingw_bin_path"
     do_make_and_make_install
     export PKG_CONFIG_LIBDIR=
     if [[ ! -f $mingw_bin_path/$host_target-sdl2-config ]]; then
@@ -735,7 +730,7 @@ build_intel_qsv_mfx() { # disableable via command line switch...
       autoreconf -fiv || exit 1
       automake --add-missing || exit 1
     fi
-    generic_configure_make_install
+    do_configure_make_install
   cd ..
 }
 
@@ -770,7 +765,7 @@ build_libtiff() {
   build_libjpeg_turbo # auto uses it?
   do_git_checkout $libtiff_git libtiff-git
   cd libtiff-git
-    generic_configure "--enable-year2038 --enable-shared=no"
+    do_configure "--enable-year2038 --enable-shared=no"
     #sed -i.bak 's/-ltiff.*$/-ltiff -llzma -ljpeg -lz/' "${mingw_w64_x86_64_prefix}/lib/pkgconfig/libtiff-4.pc" # static deps
   cd ..
 }
@@ -784,7 +779,7 @@ build_gettext() {
   download_and_unpack_file $gettext_tar gettext-0.23.1
   cd gettext-0.23.1
     
-    generic_configure "--enable-shared=no --enable-year2038"
+    do_configure "--enable-shared=no --enable-year2038"
     do_make_and_make_install
   reset_cppflags
   cd ..
@@ -828,7 +823,7 @@ build_libtesseract() {
   do_git_checkout $tesseract_git tesseract-git
   cd tesseract-git
     export LDFLAGS="$LDFLAGS -lsharpyuv"
-    generic_configure "--enable-shared=no --disable-doc --with-curl=no"
+    do_configure "--enable-shared=no --disable-doc --with-curl=no"
     do_make_and_make_install
     sed -i.bak 's/-ltesseract.*$/-ltesseract -lstdc++ -llzma -ljpeg -lz -lgomp/' "${mingw_w64_x86_64_prefix}/lib/pkgconfig//tesseract.pc" # see above, gomp for linux native
     reset_ldflags
@@ -839,7 +834,7 @@ build_libtesseract() {
 build_libzimg() {
   do_git_checkout $zimg_git zimg-git
   cd zimg-git
-    generic_configure_make_install
+    do_configure_make_install
   cd ..
 }
 
@@ -960,7 +955,7 @@ build_libpng() {
   do_git_checkout $libpng_git libpng-git
   cd libpng-git
     export CFLAGS="$CFLAGS -fpic"
-    generic_configure
+    do_configure
     do_make_and_make_install
   reset_cflags
   sed -i.bak "s|-lpng16.*|-lpng16 -lm -lz -lm|" "${mingw_w64_x86_64_prefix}/lib/pkgconfig/libpng16.pc"
@@ -971,7 +966,7 @@ build_libwebp() {
   do_git_checkout $libwebp_git libwebp-git
   cd libwebp-git
     export LIBPNG_CONFIG="$mingw_w64_x86_64_prefix/bin/libpng-config --static" # LibPNG somehow doesn't get autodetected.
-    generic_configure "--enable-shared=no"
+    do_configure "--enable-shared=no"
     do_make_and_make_install
     unset LIBPNG_CONFIG
     sed -i.bak "s|-lwebp.*|-lwebp -lsharpyuv|" "${mingw_w64_x86_64_prefix}/lib/pkgconfig/libwebp.pc"
@@ -1045,7 +1040,7 @@ build_freetype() {
 build_libxml2() {
   do_git_checkout $libxml2_git libxml2-git
   cd libxml2-git
-    generic_configure "--with-ftp=no --with-http=no --with-python=no"
+    do_configure "--with-ftp=no --with-http=no --with-python=no"
     do_make_and_make_install
   cd ..
 }
@@ -1105,7 +1100,7 @@ build_fontconfig() {
   do_git_checkout $fontconfig_git fontconfig-git
   cd fontconfig-git
     #export CFLAGS= # compile fails with -march=sandybridge ... with mingw 4.0.6 at least ...
-    generic_configure "--enable-iconv --enable-libxml2 --disable-docs --with-libiconv \
+    do_configure "--enable-iconv --enable-libxml2 --disable-docs --with-libiconv \
     --enable-static=yes --enable-shared=no --enable-year2038" # Use Libxml2 instead of Expat.
     do_make_and_make_install
     reset_ldflags
@@ -1115,7 +1110,7 @@ build_fontconfig() {
 build_gmp() {
   download_and_unpack_file $gmp_tar
   cd gmp-6.2.1
-    generic_configure "ABI=$bits_target"
+    do_configure "ABI=$bits_target"
     do_make_and_make_install
   cd ..
 }
@@ -1141,7 +1136,7 @@ build_libnettle() {
   cd nettle-git
     local config_options="--disable-openssl --disable-documentation" # in case we have both gnutls and openssl, just use gnutls [except that gnutls uses this so...huh?
     config_options+=" --libdir=${mingw_w64_x86_64_prefix}/lib" # Otherwise native builds install to /lib32 or /lib64 which gnutls doesn't find
-    generic_configure "$config_options" # in case we have both gnutls and openssl, just use gnutls [except that gnutls uses this so...huh? https://github.com/rdp/ffmpeg-windows-build-helpers/issues/25#issuecomment-28158515
+    do_configure "$config_options" # in case we have both gnutls and openssl, just use gnutls [except that gnutls uses this so...huh? https://github.com/rdp/ffmpeg-windows-build-helpers/issues/25#issuecomment-28158515
     do_make_and_make_install # What's up with "Configured with: ... --with-gmp=/cygdrive/d/ffmpeg-windows-build-helpers-master/native_build/windows/ffmpeg_local_builds/sandbox/cross_compilers/pkgs/gmp/gmp-6.1.2-i686" in 'config.log'? Isn't the 'gmp-6.1.2' above being used?
   cd ..
 }
@@ -1162,7 +1157,7 @@ build_gnutls() {
     # --disable-guile is so that if it finds guile installed (cygwin did/does) it won't try and link/build to it and fail...
     # libtasn1 is some dependency, appears provided is an option [see also build_libnettle]
     # pks #11 hopefully we don't need kit
-    generic_configure "--enable-shared=no --enable-static=yes --disable-maintainer-mode --enable-year2038 --disable-doc --disable-tools --disable-cxx --disable-tests --disable-gtk-doc-html --disable-libdane --disable-nls --enable-local-libopts --disable-guile --with-included-libtasn1 --without-p11-kit"
+    do_configure "--enable-shared=no --enable-static=yes --disable-maintainer-mode --enable-year2038 --disable-doc --disable-tools --disable-cxx --disable-tests --disable-gtk-doc-html --disable-libdane --disable-nls --enable-local-libopts --disable-guile --with-included-libtasn1 --without-p11-kit"
     do_make_and_make_install
     # libsrt doesn't know how to use its pkg deps, so put them in as non-static deps :| https://github.com/Haivision/srt/issues/565
     sed -i.bak 's/-lgnutls.*/-lgnutls -lnettle -lhogweed -lgmp -lidn2 -liconv -lunistring/' "${mingw_w64_x86_64_prefix}/lib/pkgconfig/gnutls.pc"
@@ -1172,7 +1167,7 @@ build_gnutls() {
 build_libogg() {
   do_git_checkout $libogg_git ogg-git
   cd ogg-git
-    generic_configure_make_install
+    do_configure_make_install
   cd ..
 }
 
@@ -1180,7 +1175,7 @@ build_libvorbis() {
   do_git_checkout $libvorbis_git vorbis-git
   cd vorbis-git
     export CPPFLAGS="$CPPFLAGS -fpic"
-    generic_configure "--disable-docs --disable-examples --disable-oggtest"
+    do_configure "--disable-docs --disable-examples --disable-oggtest"
     do_make_and_make_install
     reset_cppflags
   cd ..
@@ -1196,7 +1191,7 @@ build_libopus() {
 build_libspeexdsp() {
   do_git_checkout $libspeexdsp_git speexdsp-git
   cd speexdsp-git
-    generic_configure "--disable-examples"
+    do_configure "--disable-examples"
     do_make_and_make_install
   cd ..
 }
@@ -1206,7 +1201,7 @@ build_libspeex() {
   cd speex-git
     export SPEEXDSP_CFLAGS="-I$mingw_w64_x86_64_prefix/include"
     export SPEEXDSP_LIBS="-L$mingw_w64_x86_64_prefix/lib -lspeexdsp" # 'configure' somehow can't find SpeexDSP with 'pkg-config'.
-    generic_configure "--disable-binaries" # If you do want the libraries, then 'speexdec.exe' needs 'LDFLAGS=-lwinmm'.
+    do_configure "--disable-binaries" # If you do want the libraries, then 'speexdec.exe' needs 'LDFLAGS=-lwinmm'.
     do_make_and_make_install
     unset SPEEXDSP_CFLAGS
     unset SPEEXDSP_LIBS
@@ -1216,7 +1211,7 @@ build_libspeex() {
 build_libtheora() {
   do_git_checkout $libtheora_git theora-git
   cd theora-git
-    generic_configure "--disable-doc --disable-spec --disable-oggtest --disable-vorbistest --disable-examples --disable-asm" # disable asm: avoid [theora @ 0x1043144a0]error in unpack_block_qpis in 64 bit... [OK OS X 64 bit tho...]
+    do_configure "--disable-doc --disable-spec --disable-oggtest --disable-vorbistest --disable-examples --disable-asm" # disable asm: avoid [theora @ 0x1043144a0]error in unpack_block_qpis in 64 bit... [OK OS X 64 bit tho...]
     do_make_and_make_install
   cd ..
 }
@@ -1225,7 +1220,7 @@ build_libsndfile() {
   do_git_checkout $libsndfile_git libsndfile-git
   cd libsndfile-git
     export LDFLAGS="$LDFLAGS -lm"
-    generic_configure "--disable-sqlite --disable-external-libs --disable-full-suite"
+    do_configure "--disable-sqlite --disable-external-libs --disable-full-suite --prefix=$mingw_w64_x86_64_prefix"
     do_make_and_make_install
     if [ "$1" = "install-libgsm" ]; then
       if [[ ! -f $mingw_w64_x86_64_prefix/lib/libgsm.a ]]; then
@@ -1243,7 +1238,7 @@ build_mpg123() {
   do_svn_checkout $mpg123_svn mpg123-svn # avoid Think again failure
   cd mpg123-svn
     export CPPFLAGS="$CPPFLAGS -fpic"
-    generic_configure
+    do_configure
     do_make_and_make_install
     reset_cppflags
   cd ..
@@ -1253,7 +1248,7 @@ build_mp3lame() {
   do_svn_checkout $lame_svn lame-svn
   cd lame-svn
     apply_patch file://$patch_dir/mp3lame.patch "" "patch"
-    generic_configure "--enable-nasm --enable-shared=no --disable-frontend"
+    do_configure "--enable-nasm --enable-shared=no --disable-frontend"
     do_make_and_make_install
   cd ..
 }
@@ -1265,7 +1260,7 @@ build_twolame() {
       sed -i.bak "/^SUBDIRS/s/ frontend.*//" Makefile.am || exit 1
     fi
     cpu_count=1 # maybe can't handle it http://betterlogic.com/roger/2017/07/mp3lame-woe/ comments
-    generic_configure_make_install
+    do_configure_make_install
     cpu_count=$original_cpu_count
   cd ..
 }
@@ -1277,7 +1272,7 @@ local checkout_dir=fdk-aac-git
     if [[ ! -f "configure" ]]; then
       autoreconf -fiv || exit 1
     fi
-    generic_configure_make_install
+    do_configure_make_install
   cd ..
 }
 
@@ -1303,7 +1298,7 @@ build_libmodplug() {
       autoreconf -fiv || exit 1
       automake --add-missing || exit 1
     fi
-    generic_configure_make_install # or could use cmake I guess
+    do_configure_make_install # or could use cmake I guess
   cd ..
 }
 
@@ -1378,10 +1373,10 @@ build_libbluray() {
         sed -i.bak "/WIN32$/,+4d" src/udfread.c # Fix WinXP incompatibility.
       fi
       if [[ ! -f src/udfread-version.h ]]; then
-        generic_configure # Generate 'udfread-version.h', or building Libbluray fails otherwise.
+        do_configure # Generate 'udfread-version.h', or building Libbluray fails otherwise.
       fi
     cd ../..
-    generic_configure "--disable-examples --disable-bdjava-jar"
+    do_configure "--disable-examples --disable-bdjava-jar"
     do_make_and_make_install "CPPFLAGS=\"-Ddec_init=libbr_dec_init\""
   cd ..
 }
@@ -1392,7 +1387,8 @@ build_libbs2b() {
     apply_patch file://$patch_dir/libbs2b.patch "" "patch"
     sed -i.bak "s/AC_FUNC_MALLOC//" configure.ac # #270
     export LIBS=-lm # avoid pow failure linux native
-    generic_configure_make_install
+    do_configure
+    do_make_and_make_install
     unset LIBS
   cd ..
 }
@@ -1413,7 +1409,7 @@ build_libflite() {
     if [[ ! -f main/Makefile.bak ]]; then
       sed -i.bak "s/cp -pd/cp -p/" main/Makefile # friendlier cp for OS X
     fi
-    generic_configure "--disable-shared"
+    do_configure "--disable-shared"
     do_make_and_make_install
   cd ..
 }
@@ -1445,7 +1441,7 @@ build_vamp_plugin() {
 build_fftw() {
   download_and_unpack_file $fftw_tar fftw-3.3.8
   cd fftw-3.3.8
-    generic_configure "--disable-doc"
+    do_configure "--disable-doc"
     do_make_and_make_install
   cd ..
 }
@@ -1454,7 +1450,7 @@ build_libsamplerate() {
   # I think this didn't work with ubuntu 14.04 [too old automake or some odd] :|
   do_git_checkout $libsamplerate_git libsamplerate-git
   cd libsamplerate-git
-    generic_configure
+    do_configure
     do_make_and_make_install
   cd ..
   # but OS X can't use 0.1.9 :|
@@ -1545,7 +1541,7 @@ build_libcaca() {
       sed -i.bak "s/__declspec(dllexport)//g" *.h # get rid of the declspec lines otherwise the build will fail for undefined symbols
       sed -i.bak "s/__declspec(dllimport)//g" *.h
     cd ..
-    generic_configure "--libdir=$mingw_w64_x86_64_prefix/lib --disable-csharp --disable-java --disable-cxx --disable-python --disable-ruby --disable-doc --disable-cocoa --disable-ncurses"
+    do_configure "--libdir=$mingw_w64_x86_64_prefix/lib --disable-csharp --disable-java --disable-cxx --disable-python --disable-ruby --disable-doc --disable-cocoa --disable-ncurses"
     do_make_and_make_install
     sed -i.bak "s/-lcaca.*/-lcaca -lX11/" "${mingw_w64_x86_64_prefix}/lib/pkgconfig/caca.pc"
   cd ..
@@ -1570,7 +1566,7 @@ build_zvbi() {
   cd zvbi-0.2.35
     #apply_patch file://$patch_dir/zvbi-no-contrib.diff # weird issues with some stuff in contrib...
     #apply_patch file://$patch_dir/zvbi-aarch64.patch
-    generic_configure " --disable-dvb --disable-bktr --disable-proxy --disable-nls --without-doxygen --without-libiconv-prefix"
+    do_configure " --disable-dvb --disable-bktr --disable-proxy --disable-nls --without-doxygen --without-libiconv-prefix"
     # Without '--without-libiconv-prefix' 'configure' would otherwise search for and only accept a shared Libiconv library.
     do_make_and_make_install
   cd ..
@@ -1612,7 +1608,7 @@ build_libass() {
 build_libaribb24() {
   do_git_checkout $libaribb24_git aribb24-git
   cd aribb24-git
-    generic_configure_make_install
+    do_configure_make_install
   cd ..
 }
 
@@ -1788,7 +1784,7 @@ build_libdvdread() {
   do_git_checkout $libdvdread_git libdvdread-git
   cd libdvdread-git
     # XXXX better CFLAGS here...
-    generic_configure "CFLAGS=-DHAVE_DVDCSS_DVDCSS_H LDFLAGS="$LDFLAGS -ldvdcss" --enable-dlfcn" # vlc patch: "--enable-libdvdcss" # XXX ask how I'm *supposed* to do this to the dvdread peeps [svn?]
+    do_configure "CFLAGS=-DHAVE_DVDCSS_DVDCSS_H LDFLAGS="$LDFLAGS -ldvdcss" --enable-dlfcn" # vlc patch: "--enable-libdvdcss" # XXX ask how I'm *supposed* to do this to the dvdread peeps [svn?]
     do_make_and_make_install
     sed -i.bak 's/-ldvdread.*/-ldvdread -ldvdcss/' "${mingw_w64_x86_64_prefix}/lib/pkgconfig/dvdread.pc"
   cd ..
@@ -1864,7 +1860,7 @@ build_glu() {
   cd glu-git
     export CC=gcc
     export CXX=g++
-    generic_configure_make_install
+    do_configure_make_install
     reset_compiler
   cd ..
 }
@@ -1921,7 +1917,7 @@ build_libvpl() {
 build_libcdio() {
   do_git_checkout $LIBCDIO_URL libcdio-git
   cd libcdio-git
-    generic_configure "--enable-year2038 --enable-vcd-info  --disable-rpath --enable-shared=no"
+    do_configure "--enable-year2038 --enable-vcd-info  --disable-rpath --enable-shared=no"
     make install -j $cpu_count # broken make build
     export PKG_CONFIG_PATH="$PKG_CONFIG_PATH:$(pwd)" # add this folder path to pkgconfig instead
   cd ..
@@ -1932,7 +1928,7 @@ build_libcdio_paranoia() {
   build_libcdio
   do_git_checkout $LIBCDIO_CDPARANOIA_URL libcdio-paranoia-git
   cd libcdio-paranoia-git
-    generic_configure "--enable-shared=no"
+    do_configure "--enable-shared=no"
     do_make_and_make_install
   cd ..
 }
@@ -1992,7 +1988,7 @@ build_mp4box() { # like build_gpac
     sed -i.bak "s/has_dvb4linux=\"yes\"/has_dvb4linux=\"no\"/g" configure
     # XXX do I want to disable more things here?
     # ./sandbox/cross_compilers/mingw-w64-i686/bin/i686-w64-mingw32-sdl-config
-    generic_configure " --target-os=MINGW32 --extra-cflags=-Wno-format --static-build --static-bin --disable-oss-audio --extra-ldflags=-municode --disable-x11 --sdl-cfg=${cross_prefix}sdl-config"
+    do_configure " --target-os=MINGW32 --extra-cflags=-Wno-format --static-build --static-bin --disable-oss-audio --extra-ldflags=-municode --disable-x11 --sdl-cfg=${cross_prefix}sdl-config"
     ./check_revision.sh
     # I seem unable to pass 3 libs into the same config line so do it with sed...
     sed -i.bak "s/EXTRALIBS=.*/EXTRALIBS=-lws2_32 -lwinmm -lz/g" config.mak
