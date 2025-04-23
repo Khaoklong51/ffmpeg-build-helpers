@@ -2557,7 +2557,7 @@ mkdir -p "$cur_dir/prefix/"
 mkdir -p "$cur_dir/prefix/bin"
 mingw_w64_x86_64_prefix="$(realpath "$cur_dir/prefix")"
 mingw_bin_path="$(realpath "$cur_dir/prefix/bin")" # sdl needs somewhere to drop "binaries"??
-export PKG_CONFIG_PATH="$mingw_w64_x86_64_prefix/lib/pkgconfig:$mingw_w64_x86_64_prefix/share/pkgconfig"
+export PKG_CONFIG_PATH="$mingw_w64_x86_64_prefix/lib/pkgconfig:$mingw_w64_x86_64_prefix/share/pkgconfig;$PKG_CONFIG_PATH"
 export PATH="$mingw_bin_path:$original_path"
 echo "PATH include: $PATH" 
 make_prefix_options="PREFIX=$mingw_w64_x86_64_prefix"
